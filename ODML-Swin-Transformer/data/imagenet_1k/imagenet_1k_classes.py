@@ -15,6 +15,8 @@
 
 #  Taken from HuggingFace: https://huggingface.co/datasets/imagenet-1k/tree/main
 #  Equivalent representation to LOC_synset_mapping.txt
+# %%
+from cProfile import label
 from collections import OrderedDict
 
 
@@ -1022,3 +1024,43 @@ IMAGENET2012_CLASSES = OrderedDict(
         "n15075141": "toilet tissue, toilet paper, bathroom tissue",
     }
 )
+
+# Reference: ODML-Swin-Transformer/get_started.md:L100
+# Requires zip file along with an in-order relative path to each image along with index of class label
+""" ILSVRC2012_val_00000001.JPEG	65
+    ILSVRC2012_val_00000002.JPEG	970
+    ILSVRC2012_val_00000003.JPEG	230
+    ILSVRC2012_val_00000004.JPEG	809
+    ILSVRC2012_val_00000005.JPEG	516 
+"""
+
+def synth_val_groundtruth_file(archive_path, val_gt_path):
+    import os
+    import tarfile
+    
+    # archive_path = "../imagenet/val_images.tar.gz"
+    # val_gt_path = "../imagenet/"
+
+    archive = tarfile.open(archive_path, "r:gz")
+
+    val_gt_path += "val_map.txt"
+
+    dict_keys = list(IMAGENET2012_CLASSES.keys())
+
+    with open(val_gt_path, "w") as outfile:
+        for member in archive:
+            path = member.name
+            if path.endswith(".JPEG"):
+                # image filepath format: <IMAGE_FILENAME>_<SYNSET_ID>.JPEG
+                root, _ = os.path.splitext(path)
+                _, synset_id = os.path.basename(root).rsplit("_", 1)
+                label_index = str(dict_keys.index(synset_id))
+                outfile.write(path + " " + label_index + "\n")
+
+    outfile.close()
+    archive.close()
+
+# %%
+synth_val_groundtruth_file(archive_path='../imagenet/tar_archives/val_images.tar.gz',
+                           val_gt_path="../imagenet/zipped_archives/")
+# %%
