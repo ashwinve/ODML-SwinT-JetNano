@@ -30,7 +30,8 @@ train_map_obj = open(train_map_path, "w")
 val_map_obj = open(val_map_path, "w")
 
 # Walk through all images and perform train, val split
-img_files = glob.glob(BASE_DIR + 'raw/*.jpg')
+RAW_IMG_PATH = BASE_DIR + 'raw/'
+img_files = glob.glob(RAW_IMG_PATH + '*.jpg')
 
 #  Building an OrderedSet from OrderedDict, with keys = None
 RESISC45_CLASSES = OrderedDict()
@@ -41,7 +42,7 @@ CURRENT_CLASS_ID = -1
 
 for img_file in img_files:
     # image filepath format: <LABEL>_<ITERATIVE_ID>.jpg
-    rel_path = img_file.replace("../raw/","")
+    rel_path = img_file.replace(RAW_IMG_PATH,"")
     label = rel_path.split(".")[0][:-4]
     
     # if unqiue label doesn't exist, add to the list
