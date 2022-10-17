@@ -82,8 +82,11 @@ def parse_option():
 
 
 def main(config):
-    dataset_train, dataset_val, data_loader_train, data_loader_val, mixup_fn = build_loader(config)
-
+    if config.EVAL_MODE:
+        dataset_val, data_loader_val, mixup_fn = build_loader(config, val_only=True)
+    else:
+        dataset_train, dataset_val, data_loader_train, data_loader_val, mixup_fn = build_loader(config)    
+    
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
     model = build_model(config)
     logger.info(str(model))
@@ -101,10 +104,13 @@ def main(config):
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False)
     loss_scaler = NativeScalerWithGradNormCount()
 
-    if config.TRAIN.ACCUMULATION_STEPS > 1:
-        lr_scheduler = build_scheduler(config, optimizer, len(data_loader_train) // config.TRAIN.ACCUMULATION_STEPS)
+    if not config.EVAL_MODE:
+        if config.TRAIN.ACCUMULATION_STEPS > 1:
+            lr_scheduler = build_scheduler(config, optimizer, len(data_loader_train) // config.TRAIN.ACCUMULATION_STEPS)
+        else:
+            lr_scheduler = build_scheduler(config, optimizer, len(data_loader_train))
     else:
-        lr_scheduler = build_scheduler(config, optimizer, len(data_loader_train))
+        lr_scheduler = None
 
     if config.AUG.MIXUP > 0.:
         # smoothing is handled with mixup label transform
