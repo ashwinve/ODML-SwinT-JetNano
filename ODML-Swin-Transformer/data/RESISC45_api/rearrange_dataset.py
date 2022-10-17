@@ -5,7 +5,8 @@ import os
 import json
 
 # create train.zip, train_map.txt, val.zip, val_map.txt
-OUTPUT_PATH = "../RESISC45/zipped_archives/"
+BASE_DIR = "../RESISC45/"
+OUTPUT_PATH = BASE_DIR + "zipped_archives/"
 
 # Number of samples per classes
 NUM_SAMPLES = 700
@@ -29,7 +30,7 @@ train_map_obj = open(train_map_path, "w")
 val_map_obj = open(val_map_path, "w")
 
 # Walk through all images and perform train, val split
-img_files = glob.glob('./raw/*.jpg')
+img_files = glob.glob(BASE_DIR + 'raw/*.jpg')
 
 #  Building an OrderedSet from OrderedDict, with keys = None
 RESISC45_CLASSES = OrderedDict()
@@ -40,7 +41,7 @@ CURRENT_CLASS_ID = -1
 
 for img_file in img_files:
     # image filepath format: <LABEL>_<ITERATIVE_ID>.jpg
-    rel_path = img_file.replace("./raw/","")
+    rel_path = img_file.replace("../raw/","")
     label = rel_path.split(".")[0][:-4]
     
     # if unqiue label doesn't exist, add to the list
@@ -57,7 +58,7 @@ for img_file in img_files:
         train_zip_obj.write(img_file, rel_path)
         
         # append to train_map.txt
-        train_map_obj.write(rel_path + " " + str(CURRENT_CLASS_ID) + "\n")
+        train_map_obj.write(rel_path + "\t" + str(CURRENT_CLASS_ID) + "\n")
         
     else:
         # print("val_map: " + img_file + " " + str(CURRENT_CLASS_ID) + "\n")
@@ -65,7 +66,7 @@ for img_file in img_files:
         val_zip_obj.write(img_file, rel_path)
         
         # append to val_map.txt
-        val_map_obj.write(rel_path + " " + str(CURRENT_CLASS_ID) + "\n")
+        val_map_obj.write(rel_path + "\t" + str(CURRENT_CLASS_ID) + "\n")
 
     SAMPLE_COUNT = SAMPLE_COUNT + 1
     RESISC45_CLASSES[label] = SAMPLE_COUNT

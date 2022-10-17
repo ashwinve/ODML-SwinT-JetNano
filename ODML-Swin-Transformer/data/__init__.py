@@ -3,9 +3,9 @@ from .data_simmim_pt import build_loader_simmim
 from .data_simmim_ft import build_loader_finetune
 
 
-def build_loader(config, simmim=False, is_pretrain=False, val_only=False):
+def build_loader(config, simmim=False, is_pretrain=False, val_only=False, cache_mode='part'):
     if val_only:
-        return build_loader_val_dataset(config)
+        return build_loader_val_dataset(config, cache_mode=cache_mode)
     if not simmim:
         return _build_loader(config)
     if is_pretrain:

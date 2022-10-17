@@ -15,7 +15,7 @@ AUG:
 BASE:
 - ''
 DATA:
-  BATCH_SIZE: 128
+  BATCH_SIZE: 4
   CACHE_MODE: part
   DATASET: imagenet
   DATA_PATH: ./data/imagenet/zipped_archives/
@@ -24,7 +24,7 @@ DATA:
   MASK_PATCH_SIZE: 32
   MASK_RATIO: 0.6
   NUM_WORKERS: 8
-  PIN_MEMORY: true
+  PIN_MEMORY: false
   ZIP_MODE: true
 ENABLE_AMP: false
 EVAL_MODE: true
@@ -162,10 +162,10 @@ TEST:
 THROUGHPUT_MODE: false
 TRAIN:
   ACCUMULATION_STEPS: 1
-  AUTO_RESUME: true
-  BASE_LR: 0.000125
+  AUTO_RESUME: false
+  BASE_LR: 7.8125e-06
   CLIP_GRAD: 5.0
-  EPOCHS: 300
+  EPOCHS: 25
   LAYER_DECAY: 1.0
   LR_SCHEDULER:
     DECAY_EPOCHS: 30
@@ -174,7 +174,7 @@ TRAIN:
     MULTISTEPS: []
     NAME: cosine
     WARMUP_PREFIX: true
-  MIN_LR: 1.25e-06
+  MIN_LR: 3.90625e-08
   MOE:
     SAVE_MASTER: false
   OPTIMIZER:
@@ -186,7 +186,7 @@ TRAIN:
     NAME: adamw
   START_EPOCH: 0
   USE_CHECKPOINT: false
-  WARMUP_EPOCHS: 20
-  WARMUP_LR: 1.25e-07
+  WARMUP_EPOCHS: 0
+  WARMUP_LR: 3.90625e-09
   WEIGHT_DECAY: 0.05
 USE_Distributed_Data_Parallel: false

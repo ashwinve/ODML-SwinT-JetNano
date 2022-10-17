@@ -1055,7 +1055,7 @@ def synth_val_groundtruth_file(archive_path, val_gt_path):
                 root, _ = os.path.splitext(path)
                 _, synset_id = os.path.basename(root).rsplit("_", 1)
                 label_index = str(dict_keys.index(synset_id))
-                outfile.write(path + " " + label_index + "\n")
+                outfile.write(path + "\t" + label_index + "\n")
 
     outfile.close()
     archive.close()

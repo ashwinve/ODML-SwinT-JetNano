@@ -83,7 +83,8 @@ def parse_option():
 
 def main(config):
     if config.EVAL_MODE:
-        dataset_val, data_loader_val, mixup_fn = build_loader(config, val_only=True)
+        # TODO: Turning off cache_mode due to calls to torch.distributed()
+        dataset_val, data_loader_val, mixup_fn = build_loader(config, val_only=True, cache_mode="no")
     else:
         dataset_train, dataset_val, data_loader_train, data_loader_val, mixup_fn = build_loader(config)    
     
@@ -140,8 +141,8 @@ def main(config):
     if config.MODEL.RESUME:
         max_accuracy = load_checkpoint(config, model_without_ddp, optimizer, lr_scheduler, loss_scaler, logger)
         acc1, acc5, loss = validate(config, data_loader_val, model)
-        logger.info(f"Accuracy of the network on the {len(dataset_val)} test images: {acc1:.1f}%")
-        logger.info(f"Accuracy of the network on the {len(dataset_val)} test images: {acc5:.1f}%")
+        logger.info(f"Accuracy (Top 1%) of the network on the {len(dataset_val)} test images: {acc1:.1f}%")
+        logger.info(f"Accuracy (Top 5%) of the network on the {len(dataset_val)} test images: {acc5:.1f}%")
         if config.EVAL_MODE:
             return
 
@@ -193,8 +194,8 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
     start = time.time()
     end = time.time()
     for idx, (samples, targets) in enumerate(data_loader):
-        samples = samples.cuda(non_blocking=True)
-        targets = targets.cuda(non_blocking=True)
+        samples = samples.cuda(non_blocking=False)
+        targets = targets.cuda(non_blocking=False)
 
         if mixup_fn is not None:
             samples, targets = mixup_fn(samples, targets)
@@ -252,8 +253,8 @@ def validate(config, data_loader, model):
 
     end = time.time()
     for idx, (images, target) in enumerate(data_loader):
-        images = images.cuda(non_blocking=True)
-        target = target.cuda(non_blocking=True)
+        images = images.cuda(non_blocking=False)
+        target = target.cuda(non_blocking=False)
 
         # compute output
         with torch.cuda.amp.autocast(enabled=config.AMP_ENABLE):
@@ -262,10 +263,11 @@ def validate(config, data_loader, model):
         # measure accuracy and record loss
         loss = criterion(output, target)
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
-
-        acc1 = reduce_tensor(acc1)
-        acc5 = reduce_tensor(acc5)
-        loss = reduce_tensor(loss)
+        
+        if(config.USE_Distributed_Data_Parallel):
+            acc1 = reduce_tensor(acc1)
+            acc5 = reduce_tensor(acc5)
+            loss = reduce_tensor(loss)
 
         loss_meter.update(loss.item(), target.size(0))
         acc1_meter.update(acc1.item(), target.size(0))
@@ -293,7 +295,7 @@ def throughput(data_loader, model, logger):
     model.eval()
 
     for idx, (images, _) in enumerate(data_loader):
-        images = images.cuda(non_blocking=True)
+        images = images.cuda(non_blocking=False)
         batch_size = images.shape[0]
         for i in range(50):
             model(images)

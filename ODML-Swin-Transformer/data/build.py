@@ -95,16 +95,17 @@ def build_loader(config):
     return dataset_train, dataset_val, data_loader_train, data_loader_val, mixup_fn
 
 
-def build_loader_val_dataset(config):
-    dataset_val, _ = build_dataset(is_train=False, config=config)
-    print(f"local rank {config.LOCAL_RANK} / global rank {dist.get_rank()} successfully build val dataset")
-
-    if config.TEST.SEQUENTIAL:
-        sampler_val = torch.utils.data.SequentialSampler(dataset_val)
-    else:
+def build_loader_val_dataset(config, cache_mode='part'):
+    dataset_val, _ = build_dataset(is_train=False, config=config, cache_mode=cache_mode)
+    
+    if config.USE_Distributed_Data_Parallel:
+        print(f"local rank {config.LOCAL_RANK} / global rank {dist.get_rank()} successfully build val dataset")
         sampler_val = torch.utils.data.distributed.DistributedSampler(
             dataset_val, shuffle=config.TEST.SHUFFLE
         )
+    else:
+        # if config.TEST.SEQUENTIAL:
+        sampler_val = torch.utils.data.SequentialSampler(dataset_val)
 
     data_loader_val = torch.utils.data.DataLoader(
         dataset_val, sampler=sampler_val,
@@ -127,15 +128,16 @@ def build_loader_val_dataset(config):
     return dataset_val, data_loader_val, mixup_fn
 
 
-def build_dataset(is_train, config):
+def build_dataset(is_train, config, cache_mode='part'):
     transform = build_transform(is_train, config)
     if config.DATA.DATASET == 'imagenet':
         prefix = 'train' if is_train else 'val'
         if config.DATA.ZIP_MODE:
             ann_file = prefix + "_map.txt"
             prefix = prefix + ".zip@/"
+            CACHE_MODE = config.DATA.CACHE_MODE if is_train else cache_mode
             dataset = CachedImageFolder(config.DATA.DATA_PATH, ann_file, prefix, transform,
-                                        cache_mode=config.DATA.CACHE_MODE if is_train else 'part')
+                                        cache_mode=CACHE_MODE)
         else:
             root = os.path.join(config.DATA.DATA_PATH, prefix)
             dataset = datasets.ImageFolder(root, transform=transform)
@@ -157,8 +159,9 @@ def build_dataset(is_train, config):
         if config.DATA.ZIP_MODE:
             ann_file = prefix + "_map.txt"
             prefix = prefix + ".zip@/"
+            CACHE_MODE = config.DATA.CACHE_MODE if is_train else cache_mode
             dataset = CachedImageFolder(config.DATA.DATA_PATH, ann_file, prefix, transform,
-                                        cache_mode=config.DATA.CACHE_MODE if is_train else 'part')
+                                        cache_mode=CACHE_MODE)
     else:
         raise NotImplementedError("We only support ImageNet Now.")
 

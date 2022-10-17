@@ -19,7 +19,7 @@ _C.BASE = ['']
 # -----------------------------------------------------------------------------
 _C.DATA = CN()
 # Batch size for a single GPU, could be overwritten by command line argument
-_C.DATA.BATCH_SIZE = 128
+_C.DATA.BATCH_SIZE = 4
 # Path to dataset, could be overwritten by command line argument
 _C.DATA.DATA_PATH = ''
 # Dataset name
@@ -32,9 +32,9 @@ _C.DATA.INTERPOLATION = 'bicubic'
 # could be overwritten by command line argument
 _C.DATA.ZIP_MODE = False
 # Cache Data in Memory, could be overwritten by command line argument
-_C.DATA.CACHE_MODE = 'part'
+_C.DATA.CACHE_MODE = 'no'
 # Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.
-_C.DATA.PIN_MEMORY = True
+_C.DATA.PIN_MEMORY = False
 # Number of data loading threads
 _C.DATA.NUM_WORKERS = 8
 
@@ -146,16 +146,16 @@ _C.MODEL.SIMMIM.NORM_TARGET.PATCH_SIZE = 47
 # -----------------------------------------------------------------------------
 _C.TRAIN = CN()
 _C.TRAIN.START_EPOCH = 0
-_C.TRAIN.EPOCHS = 300
-_C.TRAIN.WARMUP_EPOCHS = 20
+_C.TRAIN.EPOCHS = 25
+_C.TRAIN.WARMUP_EPOCHS = 0
 _C.TRAIN.WEIGHT_DECAY = 0.05
-_C.TRAIN.BASE_LR = 5e-4
+_C.TRAIN.BASE_LR = 1e-3
 _C.TRAIN.WARMUP_LR = 5e-7
 _C.TRAIN.MIN_LR = 5e-6
 # Clip gradient norm
 _C.TRAIN.CLIP_GRAD = 5.0
 # Auto resume from latest checkpoint
-_C.TRAIN.AUTO_RESUME = True
+_C.TRAIN.AUTO_RESUME = False
 # Gradient accumulation steps
 # could be overwritten by command line argument
 _C.TRAIN.ACCUMULATION_STEPS = 1
