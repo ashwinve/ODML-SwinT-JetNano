@@ -5,6 +5,7 @@
 # Written by Ze Liu
 # --------------------------------------------------------
 
+import sys
 import os
 import time
 import json
@@ -84,7 +85,7 @@ def parse_option():
 def main(config):
     if config.EVAL_MODE:
         # TODO: Turning off cache_mode due to calls to torch.distributed()
-        dataset_val, data_loader_val, mixup_fn = build_loader(config, val_only=True, cache_mode="no")
+        dataset_val, data_loader_val, mixup_fn = build_loader(config, val_only=True)
     else:
         dataset_train, dataset_val, data_loader_train, data_loader_val, mixup_fn = build_loader(config)    
     
@@ -123,7 +124,7 @@ def main(config):
         criterion = LabelSmoothingCrossEntropy(smoothing=config.MODEL.LABEL_SMOOTHING)
     else:
         criterion = torch.nn.CrossEntropyLoss()
-
+    
     max_accuracy = 0.0
 
     if config.TRAIN.AUTO_RESUME:
@@ -312,7 +313,7 @@ def throughput(data_loader, model, logger):
 
 if __name__ == '__main__':
     args, config = parse_option()
-
+    
     if config.AMP_OPT_LEVEL:
         print("[warning] Apex amp has been deprecated, please use pytorch amp instead!")
 

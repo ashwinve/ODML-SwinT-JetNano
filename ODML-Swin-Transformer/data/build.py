@@ -45,19 +45,29 @@ def build_loader(config):
     config.defrost()
     dataset_train, config.MODEL.NUM_CLASSES = build_dataset(is_train=True, config=config)
     config.freeze()
-    print(f"local rank {config.LOCAL_RANK} / global rank {dist.get_rank()} successfully build train dataset")
+    
+    if config.USE_Distributed_Data_Parallel:
+        print(f"local rank {config.LOCAL_RANK} / global rank {dist.get_rank()} successfully build train dataset")
+    
     dataset_val, _ = build_dataset(is_train=False, config=config)
-    print(f"local rank {config.LOCAL_RANK} / global rank {dist.get_rank()} successfully build val dataset")
+    
+    if config.USE_Distributed_Data_Parallel:
+        print(f"local rank {config.LOCAL_RANK} / global rank {dist.get_rank()} successfully build val dataset")
 
-    num_tasks = dist.get_world_size()
-    global_rank = dist.get_rank()
-    if config.DATA.ZIP_MODE and config.DATA.CACHE_MODE == 'part':
-        indices = np.arange(dist.get_rank(), len(dataset_train), dist.get_world_size())
-        sampler_train = SubsetRandomSampler(indices)
+    if config.USE_Distributed_Data_Parallel:
+        num_tasks = dist.get_world_size()
+        global_rank = dist.get_rank()
+        
+        if config.DATA.ZIP_MODE and config.DATA.CACHE_MODE == 'part':
+            indices = np.arange(dist.get_rank(), len(dataset_train), dist.get_world_size())
+            sampler_train = SubsetRandomSampler(indices)
+        else:
+            sampler_train = torch.utils.data.DistributedSampler(
+                dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
+            )
     else:
-        sampler_train = torch.utils.data.DistributedSampler(
-            dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
-        )
+        # TODO: Change sampler policy to randomized ?
+        sampler_train = torch.utils.data.SequentialSampler(dataset_train)
 
     if config.TEST.SEQUENTIAL:
         sampler_val = torch.utils.data.SequentialSampler(dataset_val)
@@ -96,7 +106,7 @@ def build_loader(config):
 
 
 def build_loader_val_dataset(config, cache_mode='part'):
-    dataset_val, _ = build_dataset(is_train=False, config=config, cache_mode=cache_mode)
+    dataset_val, _ = build_dataset(is_train=False, config=config)
     
     if config.USE_Distributed_Data_Parallel:
         print(f"local rank {config.LOCAL_RANK} / global rank {dist.get_rank()} successfully build val dataset")
@@ -128,14 +138,14 @@ def build_loader_val_dataset(config, cache_mode='part'):
     return dataset_val, data_loader_val, mixup_fn
 
 
-def build_dataset(is_train, config, cache_mode='part'):
+def build_dataset(is_train, config):
     transform = build_transform(is_train, config)
     if config.DATA.DATASET == 'imagenet':
         prefix = 'train' if is_train else 'val'
         if config.DATA.ZIP_MODE:
             ann_file = prefix + "_map.txt"
             prefix = prefix + ".zip@/"
-            CACHE_MODE = config.DATA.CACHE_MODE if is_train else cache_mode
+            CACHE_MODE = config.DATA.CACHE_MODE
             dataset = CachedImageFolder(config.DATA.DATA_PATH, ann_file, prefix, transform,
                                         cache_mode=CACHE_MODE)
         else:
@@ -152,16 +162,15 @@ def build_dataset(is_train, config, cache_mode='part'):
         nb_classes = 21841
         
     elif config.DATA.DATASET == "resisc45":
-        # TODO: Untested
-        print("This loader for RESISC45 is untested\n")
         prefix = 'train' if is_train else 'val'
         
         if config.DATA.ZIP_MODE:
             ann_file = prefix + "_map.txt"
             prefix = prefix + ".zip@/"
-            CACHE_MODE = config.DATA.CACHE_MODE if is_train else cache_mode
+            CACHE_MODE = config.DATA.CACHE_MODE
             dataset = CachedImageFolder(config.DATA.DATA_PATH, ann_file, prefix, transform,
                                         cache_mode=CACHE_MODE)
+            nb_classes = 45
     else:
         raise NotImplementedError("We only support ImageNet Now.")
 
