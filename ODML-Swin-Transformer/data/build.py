@@ -94,6 +94,38 @@ def build_loader(config):
     return dataset_train, dataset_val, data_loader_train, data_loader_val, mixup_fn
 
 
+def build_loader_val_dataset(config):
+    dataset_val, _ = build_dataset(is_train=False, config=config)
+    print(f"local rank {config.LOCAL_RANK} / global rank {dist.get_rank()} successfully build val dataset")
+
+    if config.TEST.SEQUENTIAL:
+        sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+    else:
+        sampler_val = torch.utils.data.distributed.DistributedSampler(
+            dataset_val, shuffle=config.TEST.SHUFFLE
+        )
+
+    data_loader_val = torch.utils.data.DataLoader(
+        dataset_val, sampler=sampler_val,
+        batch_size=config.DATA.BATCH_SIZE,
+        shuffle=False,
+        num_workers=config.DATA.NUM_WORKERS,
+        pin_memory=config.DATA.PIN_MEMORY,
+        drop_last=False
+    )
+
+    # setup mixup / cutmix
+    mixup_fn = None
+    mixup_active = config.AUG.MIXUP > 0 or config.AUG.CUTMIX > 0. or config.AUG.CUTMIX_MINMAX is not None
+    if mixup_active:
+        mixup_fn = Mixup(
+            mixup_alpha=config.AUG.MIXUP, cutmix_alpha=config.AUG.CUTMIX, cutmix_minmax=config.AUG.CUTMIX_MINMAX,
+            prob=config.AUG.MIXUP_PROB, switch_prob=config.AUG.MIXUP_SWITCH_PROB, mode=config.AUG.MIXUP_MODE,
+            label_smoothing=config.MODEL.LABEL_SMOOTHING, num_classes=config.MODEL.NUM_CLASSES)
+
+    return dataset_val, data_loader_val, mixup_fn
+
+
 def build_dataset(is_train, config):
     transform = build_transform(is_train, config)
     if config.DATA.DATASET == 'imagenet':
@@ -115,6 +147,17 @@ def build_dataset(is_train, config):
             ann_file = prefix + "_map_val.txt"
         dataset = IN22KDATASET(config.DATA.DATA_PATH, ann_file, transform)
         nb_classes = 21841
+        
+    elif config.DATA.DATASET == "resisc45":
+        # TODO: Untested
+        print("This loader for RESISC45 is untested\n")
+        prefix = 'train' if is_train else 'val'
+        
+        if config.DATA.ZIP_MODE:
+            ann_file = prefix + "_map.txt"
+            prefix = prefix + ".zip@/"
+            dataset = CachedImageFolder(config.DATA.DATA_PATH, ann_file, prefix, transform,
+                                        cache_mode=config.DATA.CACHE_MODE if is_train else 'part')
     else:
         raise NotImplementedError("We only support ImageNet Now.")
 
