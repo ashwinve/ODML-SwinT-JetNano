@@ -64,7 +64,7 @@ def parse_option():
     parser.add_argument('--throughput', action='store_true', help='Test throughput only')
 
     # distributed training
-    parser.add_argument("--local_rank", type=int, required=True, help='local rank for DistributedDataParallel')
+    parser.add_argument("--local_rank", type=int, required=False, help='local rank for DistributedDataParallel')
 
     # for acceleration
     parser.add_argument('--fused_window_process', action='store_true',
@@ -101,7 +101,10 @@ def main(config):
     model_without_ddp = model
 
     optimizer = build_optimizer(config, model)
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False)
+    
+    if(config.USE_Distributed_Data_Parallel):
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False)
+    
     loss_scaler = NativeScalerWithGradNormCount()
 
     if not config.EVAL_MODE:
@@ -158,9 +161,14 @@ def main(config):
 
         train_one_epoch(config, model, criterion, data_loader_train, optimizer, epoch, mixup_fn, lr_scheduler,
                         loss_scaler)
-        if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
-            save_checkpoint(config, epoch, model_without_ddp, max_accuracy, optimizer, lr_scheduler, loss_scaler,
-                            logger)
+        if(config.USE_Distributed_Data_Parallel):
+            if dist.get_rank() == 0 and (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
+                save_checkpoint(config, epoch, model_without_ddp, max_accuracy, optimizer, lr_scheduler, loss_scaler,
+                                logger)
+        else:
+            if (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
+                save_checkpoint(config, epoch, model_without_ddp, max_accuracy, optimizer, lr_scheduler, loss_scaler,
+                                logger)
 
         acc1, acc5, loss = validate(config, data_loader_val, model)
         logger.info(f"Accuracy of the network on the {len(dataset_val)} test images: {acc1:.1f}%")
@@ -314,10 +322,16 @@ if __name__ == '__main__':
         rank = -1
         world_size = -1
     torch.cuda.set_device(config.LOCAL_RANK)
-    torch.distributed.init_process_group(backend='nccl', init_method='env://', world_size=world_size, rank=rank)
-    torch.distributed.barrier()
+    
+    if(config.USE_Distributed_Data_Parallel):
+        torch.distributed.init_process_group(backend='nccl', init_method='env://', world_size=world_size, rank=rank)
+        torch.distributed.barrier()
 
-    seed = config.SEED + dist.get_rank()
+        seed = config.SEED + dist.get_rank()
+    
+    else:
+        seed = config.SEED
+        
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     np.random.seed(seed)
@@ -325,14 +339,22 @@ if __name__ == '__main__':
     cudnn.benchmark = True
 
     # linear scale the learning rate according to total batch size, may not be optimal
-    linear_scaled_lr = config.TRAIN.BASE_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
-    linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
-    linear_scaled_min_lr = config.TRAIN.MIN_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
+    if(config.USE_Distributed_Data_Parallel):
+        linear_scaled_lr = config.TRAIN.BASE_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
+        linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
+        linear_scaled_min_lr = config.TRAIN.MIN_LR * config.DATA.BATCH_SIZE * dist.get_world_size() / 512.0
+    
+    else:
+        linear_scaled_lr = config.TRAIN.BASE_LR * config.DATA.BATCH_SIZE / 512.0
+        linear_scaled_warmup_lr = config.TRAIN.WARMUP_LR * config.DATA.BATCH_SIZE / 512.0
+        linear_scaled_min_lr = config.TRAIN.MIN_LR * config.DATA.BATCH_SIZE / 512.0
+        
     # gradient accumulation also need to scale the learning rate
     if config.TRAIN.ACCUMULATION_STEPS > 1:
         linear_scaled_lr = linear_scaled_lr * config.TRAIN.ACCUMULATION_STEPS
         linear_scaled_warmup_lr = linear_scaled_warmup_lr * config.TRAIN.ACCUMULATION_STEPS
         linear_scaled_min_lr = linear_scaled_min_lr * config.TRAIN.ACCUMULATION_STEPS
+        
     config.defrost()
     config.TRAIN.BASE_LR = linear_scaled_lr
     config.TRAIN.WARMUP_LR = linear_scaled_warmup_lr
@@ -340,9 +362,18 @@ if __name__ == '__main__':
     config.freeze()
 
     os.makedirs(config.OUTPUT, exist_ok=True)
-    logger = create_logger(output_dir=config.OUTPUT, dist_rank=dist.get_rank(), name=f"{config.MODEL.NAME}")
+    if(config.USE_Distributed_Data_Parallel):
+        logger = create_logger(output_dir=config.OUTPUT, dist_rank=dist.get_rank(), name=f"{config.MODEL.NAME}")
+    else:
+        logger = create_logger(output_dir=config.OUTPUT, name=f"{config.MODEL.NAME}")
 
-    if dist.get_rank() == 0:
+    if(config.USE_Distributed_Data_Parallel):
+        if dist.get_rank() == 0:
+            path = os.path.join(config.OUTPUT, "config.json")
+            with open(path, "w") as f:
+                f.write(config.dump())
+            logger.info(f"Full config saved to {path}")
+    else:
         path = os.path.join(config.OUTPUT, "config.json")
         with open(path, "w") as f:
             f.write(config.dump())
@@ -355,6 +386,4 @@ if __name__ == '__main__':
     main(config)
 
 
-# python main.py --eval --cfg configs/swin/swin_tiny_patch4_window7_224.yaml \
-#   --resume ODML-Swin-Transformer/pretrained/swin_tiny_patch4_window7_224.pth \
-#   --data-path ./ODML-Swin-Transformer/data/imagenet/ --batch-size 128 
+# python main.py --eval --cfg configs/swin/swin_tiny_patch4_window7_224.yaml --resume ./pretrained/swin_tiny_patch4_window7_224.pth --data-path ./data/imagenet/zipped_archives/ --zip

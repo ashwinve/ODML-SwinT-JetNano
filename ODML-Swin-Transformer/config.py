@@ -256,6 +256,7 @@ _C.EVAL_MODE = False
 _C.THROUGHPUT_MODE = False
 # local rank for DistributedDataParallel, given by command line argument
 _C.LOCAL_RANK = 0
+_C.USE_Distributed_Data_Parallel = False
 # for acceleration
 _C.FUSED_WINDOW_PROCESS = False
 _C.FUSED_LAYERNORM = False
@@ -334,8 +335,9 @@ def update_config(config, args):
         config.TRAIN.OPTIMIZER.NAME = args.optim
 
     # set local rank for distributed training
-    config.LOCAL_RANK = args.local_rank
-
+    if _check_args('local_rank'):
+        config.LOCAL_RANK = args.local_rank
+    
     # output folder
     config.OUTPUT = os.path.join(config.OUTPUT, config.MODEL.NAME, config.TAG)
 
