@@ -91,14 +91,25 @@ def main(config):
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
     model = build_model(config)
     logger.info(str(model))
-    sys.exit()
+    
     # Freeze specific layers for downstream task training
     if(config.MODEL.SWIN.FREEZE_LAYERS and len(config.MODEL.SWIN.FREEZE_LAYER_INDEX) > 0):
         logger.info(f"Freezing Layers: {config.MODEL.SWIN.FREEZE_LAYER_INDEX}")
-        model_parameters = model.parameters()
-        for layer_index in config.MODEL.SWIN.FREEZE_LAYER_INDEX:
-            model_parameters[layer_index].requires_grad = False
-    sys.exit()
+        model_named_params = list(model.named_parameters())
+        num_params = len(model_named_params)
+        for param_iter in range(num_params):
+            param_name, param = model_named_params[param_iter]
+            
+            if(param_iter < 4):
+                # First 4 are patch_embed proj and norm -> assume freeze
+                param.requires_grad = False
+            elif('layers' in param_name):
+                if int(param_name.split(".")[1]) in config.MODEL.SWIN.FREEZE_LAYER_INDEX:
+                    # freeze param
+                    param.requires_grad = False
+            else:
+                pass
+    
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f"number of params: {n_parameters}")
     if hasattr(model, 'flops'):
