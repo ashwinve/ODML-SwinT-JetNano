@@ -82,4 +82,58 @@ OPTIMIZER: SGD
 LOSS: CrossEntropy Loss
 SCHEDULER: Cosine AnnealingLR
 PREPROCESSING: Images are resized into 224x224 (build.py:build_transform():L203)
-TODO: Freeze first 3 layers
+
+
+# Model Architecture
+Note: According to reference paper, BasicLayers [0,1,2] is frozen for RESISC45 last-mile training 
+SwinTransformer(
+  # Input Embedding Layer
+  (patch_embed): PatchEmbed(
+    (proj): Conv2d(3, 96, kernel_size=(4, 4), stride=(4, 4))
+    (norm): LayerNorm((96,), eps=1e-05, elementwise_affine=True)
+  )
+  (pos_drop): Dropout(p=0.0, inplace=False)
+  # Hidden Layers
+  (layers): ModuleList(
+    (0): BasicLayer(
+      dim=96, input_resolution=(56, 56), depth=2
+      (blocks): ModuleList(
+        (0): SwinTransformerBlock(...)
+        (1): SwinTransformerBlock(...)
+      )
+      (downsample): PatchMerging(...)
+    )
+    (1): BasicLayer(
+      dim=192, input_resolution=(28, 28), depth=2
+      (blocks): ModuleList(
+        (0): SwinTransformerBlock(...)
+        (1): SwinTransformerBlock(...)
+      )
+      (downsample): PatchMerging(...)
+    )
+    (2): BasicLayer(
+      dim=384, input_resolution=(14, 14), depth=6
+      (blocks): ModuleList(
+        (0): SwinTransformerBlock(...)
+        (1): SwinTransformerBlock(...)
+        (2): SwinTransformerBlock(...)
+        (3): SwinTransformerBlock(...)
+        (4): SwinTransformerBlock(...)
+        (5): SwinTransformerBlock(...)
+      )
+      (downsample): PatchMerging(...)
+    )
+    (3): BasicLayer(
+      dim=768, input_resolution=(7, 7), depth=2
+      (blocks): ModuleList(
+        (0): SwinTransformerBlock(...)
+        (1): SwinTransformerBlock(...)
+      )
+    )
+  )
+  (norm): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+  (avgpool): AdaptiveAvgPool1d(output_size=1)
+
+  # Output MLP Layer
+  (head): Linear(in_features=768, out_features=45, bias=True)
+)

@@ -9,6 +9,8 @@ MODEL:
     DEPTHS: [ 2, 2, 6, 2 ]
     NUM_HEADS: [ 3, 6, 12, 24 ]
     WINDOW_SIZE: 7
+    FREEZE_LAYERS: True
+    FREEZE_LAYER_INDEX: [0, 1, 2]
   # Used to force loss function to torch.nn.CrossEntropyLoss()
   LABEL_SMOOTHING: 0.0
 AUG:

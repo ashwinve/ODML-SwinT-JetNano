@@ -78,6 +78,9 @@ _C.MODEL.SWIN.QKV_BIAS = True
 _C.MODEL.SWIN.QK_SCALE = None
 _C.MODEL.SWIN.APE = False
 _C.MODEL.SWIN.PATCH_NORM = True
+# Additional configs for freezing layers
+_C.MODEL.SWIN.FREEZE_LAYERS = False
+_C.MODEL.SWIN.FREEZE_LAYER_INDEX = []
 
 # Swin Transformer V2 parameters
 _C.MODEL.SWINV2 = CN()
