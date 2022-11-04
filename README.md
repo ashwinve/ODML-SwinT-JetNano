@@ -81,4 +81,4 @@ LEARNINGRATE: 1e-3
 OPTIMIZER: SGD
 LOSS: CrossEntropy Loss
 SCHEDULER: Cosine AnnealingLR
-PREPROCESSING: Images are resized into 224x224
+PREPROCESSING: Images are resized into 224x224 (build.py:build_transform():L203)

@@ -7,8 +7,10 @@ MODEL:
     DEPTHS: [ 2, 2, 6, 2 ]
     NUM_HEADS: [ 3, 6, 12, 24 ]
     WINDOW_SIZE: 7
+  # Used to force loss function to torch.nn.CrossEntropyLoss()
   LABEL_SMOOTHING: 0.0
 AUG:
+  # Used to force loss function to torch.nn.CrossEntropyLoss()
   MIXUP: 0.0
 DATA:
   BATCH_SIZE: 4
@@ -21,6 +23,8 @@ DATA:
 TRAIN:
   EPOCHS: 25
   BASE_LR: 0.001
+  LR_SCHEDULER:
+    NAME: 'cosine'
   OPTIMIZER:
     NAME: 'sgd'
 TEST:

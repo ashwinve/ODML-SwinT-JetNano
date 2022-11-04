@@ -84,7 +84,6 @@ def parse_option():
 
 def main(config):
     if config.EVAL_MODE:
-        # TODO: Turning off cache_mode due to calls to torch.distributed()
         dataset_val, data_loader_val, mixup_fn = build_loader(config, val_only=True)
     else:
         dataset_train, dataset_val, data_loader_train, data_loader_val, mixup_fn = build_loader(config)    
