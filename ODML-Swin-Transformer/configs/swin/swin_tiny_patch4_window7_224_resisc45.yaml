@@ -2,6 +2,8 @@ MODEL:
   TYPE: swin
   NAME: swin_tiny_patch4_window7_224_resisc45
   DROP_PATH_RATE: 0.2
+  # Change to pick up from ./data/RESISC45/RESISC45_CLASSES.json dynamically if needed
+  NUM_CLASSES: 45
   SWIN:
     EMBED_DIM: 96
     DEPTHS: [ 2, 2, 6, 2 ]
