@@ -16,14 +16,14 @@ BASE:
 - ''
 DATA:
   BATCH_SIZE: 4
-  CACHE_MODE: part
+  CACHE_MODE: 'no'
   DATASET: imagenet
   DATA_PATH: ./data/imagenet/zipped_archives/
   IMG_SIZE: 224
   INTERPOLATION: bicubic
   MASK_PATCH_SIZE: 32
   MASK_RATIO: 0.6
-  NUM_WORKERS: 8
+  NUM_WORKERS: 1
   PIN_MEMORY: false
   ZIP_MODE: true
 ENABLE_AMP: false
