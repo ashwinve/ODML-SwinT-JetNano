@@ -16,6 +16,7 @@ MODEL:
 AUG:
   # Used to force loss function to torch.nn.CrossEntropyLoss()
   MIXUP: 0.0
+AMP_ENABLE: False
 DATA:
   BATCH_SIZE: 4
   DATASET: "resisc45"

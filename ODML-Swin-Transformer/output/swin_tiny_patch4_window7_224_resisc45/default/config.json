@@ -1,4 +1,4 @@
-AMP_ENABLE: true
+AMP_ENABLE: false
 AMP_OPT_LEVEL: ''
 AUG:
   AUTO_AUGMENT: rand-m9-mstd0.5-inc1
@@ -27,7 +27,7 @@ DATA:
   PIN_MEMORY: false
   ZIP_MODE: true
 ENABLE_AMP: false
-EVAL_MODE: true
+EVAL_MODE: false
 FUSED_LAYERNORM: false
 FUSED_WINDOW_PROCESS: false
 LOCAL_RANK: 0
@@ -38,7 +38,7 @@ MODEL:
   NAME: swin_tiny_patch4_window7_224_resisc45
   NUM_CLASSES: 45
   PRETRAINED: ''
-  RESUME: ./pretrained/swin_tiny_patch4_window7_224.pth
+  RESUME: ./pretrained/swin_tiny_patch4_window7_224_resisc45.pth
   SIMMIM:
     NORM_TARGET:
       ENABLE: false

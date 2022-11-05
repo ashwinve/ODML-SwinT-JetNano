@@ -120,7 +120,7 @@ def main(config):
     model_without_ddp = model
 
     optimizer = build_optimizer(config, model)
-    
+
     if(config.USE_Distributed_Data_Parallel):
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.LOCAL_RANK], broadcast_buffers=False)
     
@@ -176,7 +176,8 @@ def main(config):
     logger.info("Start training")
     start_time = time.time()
     for epoch in range(config.TRAIN.START_EPOCH, config.TRAIN.EPOCHS):
-        data_loader_train.sampler.set_epoch(epoch)
+        if not config.TEST.SEQUENTIAL:
+            data_loader_train.sampler.set_epoch(epoch)
 
         train_one_epoch(config, model, criterion, data_loader_train, optimizer, epoch, mixup_fn, lr_scheduler,
                         loss_scaler)
