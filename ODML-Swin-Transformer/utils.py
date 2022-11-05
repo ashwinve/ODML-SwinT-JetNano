@@ -9,7 +9,7 @@ import os
 import torch
 import torch.distributed as dist
 from torch._six import inf
-
+import copy
 
 def load_checkpoint(config, model, optimizer, lr_scheduler, loss_scaler, logger):
     logger.info(f"==============> Resuming form {config.MODEL.RESUME}....................")
@@ -18,6 +18,14 @@ def load_checkpoint(config, model, optimizer, lr_scheduler, loss_scaler, logger)
             config.MODEL.RESUME, map_location='cpu', check_hash=True)
     else:
         checkpoint = torch.load(config.MODEL.RESUME, map_location='cpu')
+        # Checking if output layer will have 1K classes or not
+        # Since pretrained model state dictionary is loaded with 1K MLP output layer
+        if(config.MODEL.NUM_CLASSES != 1000):
+            sd = copy.deepcopy(model.state_dict())
+            
+            checkpoint['model']['head.weight'] = sd['head.weight']
+            checkpoint['model']['head.bias'] = sd['head.bias']
+            
     msg = model.load_state_dict(checkpoint['model'], strict=False)
     logger.info(msg)
     max_accuracy = 0.0
