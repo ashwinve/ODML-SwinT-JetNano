@@ -1,3 +1,4 @@
+OUTPUT: "/afs/ece.cmu.edu/usr/ashwinve/Private/output"
 MODEL:
   TYPE: swin
   NAME: swin_tiny_patch4_window7_224_resisc45
