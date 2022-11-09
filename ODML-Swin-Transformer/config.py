@@ -170,6 +170,7 @@ _C.TRAIN.USE_CHECKPOINT = False
 # Required when starting with ImageNet-1K -> RESISC45 for the first time
 # If loading a checkpoint of RESISC45 model, turn this off
 _C.TRAIN.THROW_MLP_SD = True
+_C.TRAIN.OMIT_LR_STATE_DICT = False
 
 # LR scheduler
 _C.TRAIN.LR_SCHEDULER = CN()

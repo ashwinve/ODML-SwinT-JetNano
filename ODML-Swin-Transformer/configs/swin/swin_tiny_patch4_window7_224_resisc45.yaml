@@ -28,16 +28,17 @@ DATA:
   NUM_WORKERS: 1
 TRAIN:
   AUTO_RESUME: False
-  USE_CHECKPOINT: True
+  USE_CHECKPOINT: False
   # Decide if final MLP is to be thrown away when loading pretrained model
   # Required when starting with ImageNet-1K -> RESISC45 for the first time
   # If loading a checkpoint of RESISC45 model, turn this off
   THROW_MLP_SD: False
+  OMIT_LR_STATE_DICT: True
   CLIP_GRAD: 1.0
-  EPOCHS: 30
+  EPOCHS: 40
   BASE_LR: 1e-3
   WEIGHT_DECAY: 5e-4
-  WARMUP_EPOCHS: 3
+  WARMUP_EPOCHS: 0
   WARMUP_LR: 1e-5
   MIN_LR: 5e-6
   LR_SCHEDULER:
