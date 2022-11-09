@@ -20,7 +20,8 @@ def load_checkpoint(config, model, optimizer, lr_scheduler, loss_scaler, logger)
         checkpoint = torch.load(config.MODEL.RESUME, map_location='cpu')
         # Checking if output layer will have 1K classes or not
         # Since pretrained model state dictionary is loaded with 1K MLP output layer
-        if(config.MODEL.NUM_CLASSES != 1000):
+        if(config.MODEL.NUM_CLASSES != 1000 and config.TRAIN.THROW_MLP_SD):
+            logger.info("Throwing away final MLP Layer\n")
             sd = copy.deepcopy(model.state_dict())
             
             checkpoint['model']['head.weight'] = sd['head.weight']

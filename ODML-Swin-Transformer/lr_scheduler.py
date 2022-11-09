@@ -21,16 +21,35 @@ def build_scheduler(config, optimizer, n_iter_per_epoch):
 
     lr_scheduler = None
     if config.TRAIN.LR_SCHEDULER.NAME == 'cosine':
+        
+        # t_initial (int): Number of iterations for the first restart, this is equivalent to `T_0` in torch’s implementation
+        # lr_min (float): Minimum learning rate, this is equivalent to eta_min in torch’s implementation (Default: `0.`)
+        # cycle_mul (float): A factor that increases T_{i} after a restart, this is equivalent to T_mult in torch’s implementation (Default: `1`)
+        #                    Damped oscillation, stretching the period every restart
+        # cycle_limit (int): Limit the number of restarts in a cycle (Default: `1`)
+        # t_in_epochs (bool): Whether the number iterations is given in terms of epochs rather than the number of batch updates (Default: `True`)
+        
+        # lr_scheduler = CosineLRScheduler(
+        #     optimizer,
+        #     t_initial=(num_steps - warmup_steps) if config.TRAIN.LR_SCHEDULER.WARMUP_PREFIX else num_steps,
+        #     cycle_mul=1.,
+        #     lr_min=config.TRAIN.MIN_LR,
+        #     warmup_lr_init=config.TRAIN.WARMUP_LR,
+        #     warmup_t=warmup_steps,
+        #     cycle_limit=1,
+        #     t_in_epochs=False,
+        #     warmup_prefix=config.TRAIN.LR_SCHEDULER.WARMUP_PREFIX
+        # )
         lr_scheduler = CosineLRScheduler(
             optimizer,
-            t_initial=(num_steps - warmup_steps) if config.TRAIN.LR_SCHEDULER.WARMUP_PREFIX else num_steps,
+            t_initial=((num_steps - warmup_steps) if config.TRAIN.LR_SCHEDULER.WARMUP_PREFIX else num_steps)/3,
             cycle_mul=1.,
             lr_min=config.TRAIN.MIN_LR,
             warmup_lr_init=config.TRAIN.WARMUP_LR,
             warmup_t=warmup_steps,
-            cycle_limit=1,
+            cycle_limit=3+1,
             t_in_epochs=False,
-            warmup_prefix=config.TRAIN.LR_SCHEDULER.WARMUP_PREFIX,
+            warmup_prefix=config.TRAIN.LR_SCHEDULER.WARMUP_PREFIX
         )
     elif config.TRAIN.LR_SCHEDULER.NAME == 'linear':
         lr_scheduler = LinearLRScheduler(

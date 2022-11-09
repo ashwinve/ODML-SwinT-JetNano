@@ -27,8 +27,19 @@ DATA:
   PIN_MEMORY: False
   NUM_WORKERS: 1
 TRAIN:
-  EPOCHS: 25
-  BASE_LR: 0.001
+  AUTO_RESUME: False
+  USE_CHECKPOINT: True
+  # Decide if final MLP is to be thrown away when loading pretrained model
+  # Required when starting with ImageNet-1K -> RESISC45 for the first time
+  # If loading a checkpoint of RESISC45 model, turn this off
+  THROW_MLP_SD: False
+  CLIP_GRAD: 1.0
+  EPOCHS: 30
+  BASE_LR: 1e-3
+  WEIGHT_DECAY: 5e-4
+  WARMUP_EPOCHS: 3
+  WARMUP_LR: 1e-5
+  MIN_LR: 5e-6
   LR_SCHEDULER:
     NAME: 'cosine'
   OPTIMIZER:

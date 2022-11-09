@@ -166,6 +166,11 @@ _C.TRAIN.ACCUMULATION_STEPS = 1
 # could be overwritten by command line argument
 _C.TRAIN.USE_CHECKPOINT = False
 
+# Decide if final MLP is to be thrown away when loading pretrained model
+# Required when starting with ImageNet-1K -> RESISC45 for the first time
+# If loading a checkpoint of RESISC45 model, turn this off
+_C.TRAIN.THROW_MLP_SD = True
+
 # LR scheduler
 _C.TRAIN.LR_SCHEDULER = CN()
 _C.TRAIN.LR_SCHEDULER.NAME = 'cosine'
@@ -174,7 +179,7 @@ _C.TRAIN.LR_SCHEDULER.DECAY_EPOCHS = 30
 # LR decay rate, used in StepLRScheduler
 _C.TRAIN.LR_SCHEDULER.DECAY_RATE = 0.1
 # warmup_prefix used in CosineLRScheduler
-_C.TRAIN.LR_SCHEDULER.WARMUP_PREFIX = True
+_C.TRAIN.LR_SCHEDULER.WARMUP_PREFIX = False
 # [SimMIM] Gamma / Multi steps value, used in MultiStepLRScheduler
 _C.TRAIN.LR_SCHEDULER.GAMMA = 0.1
 _C.TRAIN.LR_SCHEDULER.MULTISTEPS = []
