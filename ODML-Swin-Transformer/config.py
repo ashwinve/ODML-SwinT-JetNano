@@ -81,6 +81,7 @@ _C.MODEL.SWIN.PATCH_NORM = True
 # Additional configs for freezing layers
 _C.MODEL.SWIN.FREEZE_LAYERS = False
 _C.MODEL.SWIN.FREEZE_LAYER_INDEX = []
+_C.MODEL.SWIN.FREEZE_AUTHOR_METHOD = False
 
 # Swin Transformer V2 parameters
 _C.MODEL.SWINV2 = CN()
@@ -184,7 +185,8 @@ _C.TRAIN.LR_SCHEDULER.WARMUP_PREFIX = False
 # [SimMIM] Gamma / Multi steps value, used in MultiStepLRScheduler
 _C.TRAIN.LR_SCHEDULER.GAMMA = 0.1
 _C.TRAIN.LR_SCHEDULER.MULTISTEPS = []
-
+# 0: Step every epoch, 1: Step every batch
+_C.TRAIN.LR_SCHEDULER.STEP_EPOCH = 0
 # Optimizer
 _C.TRAIN.OPTIMIZER = CN()
 _C.TRAIN.OPTIMIZER.NAME = 'adamw'

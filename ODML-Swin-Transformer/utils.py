@@ -31,14 +31,20 @@ def load_checkpoint(config, model, optimizer, lr_scheduler, loss_scaler, logger)
     logger.info(msg)
     max_accuracy = 0.0
     if not config.EVAL_MODE and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        if not config.TRAIN.OMIT_LR_STATE_DICT:
-            lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
         config.defrost()
-        config.TRAIN.START_EPOCH = checkpoint['epoch'] + 1
+        
+        if not config.TRAIN.OMIT_LR_STATE_DICT:
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            
+            lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
+            
+            if 'scaler' in checkpoint:
+                loss_scaler.load_state_dict(checkpoint['scaler'])
+            
+            config.TRAIN.START_EPOCH = checkpoint['epoch'] + 1
+        
         config.freeze()
-        if 'scaler' in checkpoint:
-            loss_scaler.load_state_dict(checkpoint['scaler'])
+        
         logger.info(f"=> loaded successfully '{config.MODEL.RESUME}' (epoch {checkpoint['epoch']})")
         if 'max_accuracy' in checkpoint:
             max_accuracy = checkpoint['max_accuracy']

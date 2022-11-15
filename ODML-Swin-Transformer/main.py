@@ -94,22 +94,35 @@ def main(config):
     
     # Freeze specific layers for downstream task training
     if(config.MODEL.SWIN.FREEZE_LAYERS and len(config.MODEL.SWIN.FREEZE_LAYER_INDEX) > 0):
-        logger.info(f"Freezing Layers: {config.MODEL.SWIN.FREEZE_LAYER_INDEX}")
-        model_named_params = list(model.named_parameters())
-        num_params = len(model_named_params)
-        for param_iter in range(num_params):
-            param_name, param = model_named_params[param_iter]
-            
-            if(param_iter < 4):
-                # First 4 are patch_embed proj and norm -> assume freeze
-                param.requires_grad = False
-            elif('layers' in param_name):
-                if int(param_name.split(".")[1]) in config.MODEL.SWIN.FREEZE_LAYER_INDEX:
-                    # freeze param
+        if not config.MODEL.SWIN.FREEZE_AUTHOR_METHOD:
+            logger.info(f"Freezing Layers: {config.MODEL.SWIN.FREEZE_LAYER_INDEX}")
+            model_named_params = list(model.named_parameters())
+            num_params = len(model_named_params)
+            for param_iter in range(num_params):
+                param_name, param = model_named_params[param_iter]
+                
+                if(param_iter < 4):
+                    # First 4 are patch_embed proj and norm -> assume freeze
                     param.requires_grad = False
-            else:
-                pass
+                elif('layers' in param_name):
+                    if int(param_name.split(".")[1]) in config.MODEL.SWIN.FREEZE_LAYER_INDEX:
+                        # freeze param
+                        param.requires_grad = False
+                else:
+                    pass
+        else:
+            logger.info(f"Freezing Layers: {config.MODEL.SWIN.FREEZE_LAYER_INDEX}")
+            model_named_children = list(model.named_children())
+            num_children = len(model_named_children)
+            for child_iter in range(num_children):
+                named_param_list = list(model_named_children[child_iter][1].named_parameters())
+                num_params = len(named_param_list)
+                
+                if child_iter in config.MODEL.SWIN.FREEZE_LAYER_INDEX:
+                    for param_iter in range(num_params):
+                        named_param_list[param_iter][1].requires_grad = False
     
+
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f"number of params: {n_parameters}")
     if hasattr(model, 'flops'):
@@ -213,6 +226,9 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
 
     start = time.time()
     end = time.time()
+    
+    n_iter_per_epoch = len(data_loader)
+    
     for idx, (samples, targets) in enumerate(data_loader):
         samples = samples.cuda(non_blocking=False)
         targets = targets.cuda(non_blocking=False)
@@ -232,7 +248,12 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
                                 update_grad=(idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0)
         if (idx + 1) % config.TRAIN.ACCUMULATION_STEPS == 0:
             optimizer.zero_grad()
-            lr_scheduler.step_update((epoch * num_steps + idx) // config.TRAIN.ACCUMULATION_STEPS)
+            # lr_scheduler.step_update((epoch * num_steps + idx) // config.TRAIN.ACCUMULATION_STEPS)
+            
+            if config.TRAIN.LR_SCHEDULER.STEP_EPOCH == 1:
+                # step scheduler every batch
+                lr_scheduler.step(epoch + idx / n_iter_per_epoch)
+            
         loss_scale_value = loss_scaler.state_dict()["scale"]
 
         torch.cuda.synchronize()
@@ -251,12 +272,17 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
             etas = batch_time.avg * (num_steps - idx)
             logger.info(
                 f'Train: [{epoch}/{config.TRAIN.EPOCHS}][{idx}/{num_steps}]\t'
-                f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.6f}\t wd {wd:.4f}\t'
+                f'eta {datetime.timedelta(seconds=int(etas))} lr {lr:.10f}\t wd {wd:.10f}\t'
                 f'time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
                 f'loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t'
                 f'grad_norm {norm_meter.val:.4f} ({norm_meter.avg:.4f})\t'
                 f'loss_scale {scaler_meter.val:.4f} ({scaler_meter.avg:.4f})\t'
                 f'mem {memory_used:.0f}MB')
+    
+    # step lr_scheduler every epoch
+    if config.TRAIN.LR_SCHEDULER.STEP_EPOCH == 0:
+        lr_scheduler.step()
+        
     epoch_time = time.time() - start
     logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")
 

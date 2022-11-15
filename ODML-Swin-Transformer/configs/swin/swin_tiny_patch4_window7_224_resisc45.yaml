@@ -11,7 +11,8 @@ MODEL:
     NUM_HEADS: [ 3, 6, 12, 24 ]
     WINDOW_SIZE: 7
     FREEZE_LAYERS: True
-    FREEZE_LAYER_INDEX: [0, 1, 2]
+    FREEZE_LAYER_INDEX: [0, 2, 3]
+    FREEZE_AUTHOR_METHOD: False
   # Used to force loss function to torch.nn.CrossEntropyLoss()
   LABEL_SMOOTHING: 0.0
 AUG:
@@ -34,15 +35,17 @@ TRAIN:
   # If loading a checkpoint of RESISC45 model, turn this off
   THROW_MLP_SD: False
   OMIT_LR_STATE_DICT: True
-  CLIP_GRAD: 1.0
-  EPOCHS: 40
-  BASE_LR: 1e-3
-  WEIGHT_DECAY: 5e-4
+  CLIP_GRAD: 2.5
+  EPOCHS: 30
+  BASE_LR: 1e-4
+  WEIGHT_DECAY: 5e-5
   WARMUP_EPOCHS: 0
   WARMUP_LR: 1e-5
-  MIN_LR: 5e-6
+  MIN_LR: 5e-8
   LR_SCHEDULER:
     NAME: 'cosine'
+    # 0: Step every epoch, 1: Step every batch
+    STEP_EPOCH: 0
   OPTIMIZER:
     NAME: 'sgd'
 TEST:
