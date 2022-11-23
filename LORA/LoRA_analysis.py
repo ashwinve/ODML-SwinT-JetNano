@@ -1,6 +1,10 @@
 #%%
-%matplotlib inline
-%cd ODML-Swin-Transfomer
+# %matplotlib inline
+# %cd ODML-Swin-Transfomer
+import sys
+# setting path
+sys.path.append('../ODML-Swin-Transformer')
+
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.special import softmax
@@ -109,7 +113,7 @@ class attn_model(torch.nn.Module):
 
 
 #%%
-config_path = 'configs/swin/swin_tiny_patch4_window7_224_resisc45.yaml'
+config_path = '/afs/ece.cmu.edu/usr/ashwinve/Private/ODML-SwinT-JetNano/ODML-Swin-Transformer/configs/swin/swin_tiny_patch4_window7_224_resisc45.yaml'
 config = get_only_config(config_path)
 
 config.defrost()

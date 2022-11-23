@@ -2,7 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+LORA/.ipynb_checkpoints
 # launch bash
 *.sh
 # nsight system report files

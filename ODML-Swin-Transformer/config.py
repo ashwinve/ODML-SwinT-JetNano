@@ -363,3 +363,8 @@ def get_config(args):
     update_config(config, args)
 
     return config
+
+def get_only_config(config_path):
+    config = _C.clone()
+    _update_config_from_file(config, config_path)
+    return config
