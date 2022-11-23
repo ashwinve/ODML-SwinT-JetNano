@@ -26,8 +26,8 @@ import json
 import copy
 
 # %%
-def svd(m):
-    return np.linalg.svd(m, compute_uv=False)
+def svd(m, compute_uv=False):
+    return np.linalg.svd(m, compute_uv=compute_uv)
 
 # %%
 def window_partition(x, window_size):
