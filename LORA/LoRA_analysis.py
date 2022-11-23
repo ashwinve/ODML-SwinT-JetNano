@@ -156,10 +156,27 @@ my_model.load_pretrained_weights(params_names, model)
 x = torch.tensor(np.random.randint(0, 256, size=(B, H, W, C)), dtype=torch.float)
 attn_op, q, k, v = my_model(x) 
 
-q_ = attn_op.detach().numpy()
-q_ = q_.transpose(1, 0, 2, 3)
-q_.shape
+attn_ = attn_op.detach().numpy()
+attn_ = attn_.transpose(1, 0, 2, 3)
+
+k_ = k.detach().numpy()
+k_ = k_.transpose(1, 0, 2, 3)
+
+v_ = v.detach().numpy()
+v_ = v_.transpose(1, 0, 2, 3)
 
 # %%
-plt.plot(np.cumsum(svd(q_[0][1022])))
+softmax_node = torch.nn.Softmax(-1)
+k__ = softmax_node(k).detach().numpy().transpose(1, 0, 2, 3)
+v__ = softmax_node(v).detach().numpy().transpose(1, 0, 2, 3)
+
+for i in range(attn_.shape[1]):
+    plt.plot(np.cumsum(svd(attn_[0][i])), label = "attn output")
+plt.show()
+for i in range(k__.shape[1]):
+    plt.plot(np.cumsum(svd(k__[0][i])), label = "key weights")
+plt.show()
+for i in range(v__.shape[1]):    
+    plt.plot(np.cumsum(svd(v__[0][i])), label = "value weights")
+plt.show()
 # %%
