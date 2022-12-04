@@ -22,6 +22,21 @@ except:
     WindowProcessReverse = None
     print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
 
+LORA_SELECTOR = 0
+LORA_RANK_DICT = {
+    'layers.0.blocks.0.attn': [9,   12, 13, 49], # Regular Attn
+    'layers.0.blocks.1.attn': [28,  35, 38, 49], # Cyclic Shift Windowed - Attn
+    'layers.1.blocks.0.attn': [24,  32, 39, 49], # Regular Attn
+    'layers.1.blocks.1.attn': [19,  22, 23, 49], # Cyclic Shift Windowed - Attn
+    'layers.2.blocks.0.attn': [16,  18, 19, 49], # Regular Attn
+    'layers.2.blocks.1.attn': [20,  22, 22, 49], # Cyclic Shift Windowed - Attn
+    'layers.2.blocks.2.attn': [22,  26, 30, 49], # Regular Attn
+    'layers.2.blocks.3.attn': [22,  25, 26, 49], # Cyclic Shift Windowed - Attn
+    'layers.2.blocks.4.attn': [24,  24, 25, 49], # Regular Attn
+    'layers.2.blocks.5.attn': [23,  24, 24, 49], # Cyclic Shift Windowed - Attn
+    'layers.3.blocks.0.attn': [20,  21, 22, 49], # Regular Attn
+    'layers.3.blocks.1.attn': [16,  16, 17, 49]  # Cyclic Shift Windowed - Attn
+    }
 
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
@@ -172,6 +187,162 @@ class WindowAttention(nn.Module):
         return flops
 
 
+class LORA_WindowAttention(nn.Module):
+    r""" Window based multi-head self attention (W-MSA) module with relative position bias.
+    It supports both of shifted and non-shifted window.
+
+    Args:
+        dim (int): Number of input channels.
+        window_size (tuple[int]): The height and width of the window.
+        num_heads (int): Number of attention heads.
+        qkv_bias (bool, optional):  If True, add a learnable bias to query, key, value. Default: True
+        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set
+        attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
+        proj_drop (float, optional): Dropout ratio of output. Default: 0.0
+    """
+
+    def __init__(self, dim, window_size, num_heads, lora_rank, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+
+        super().__init__()
+        self.lora_rank = lora_rank
+        self.dim = dim
+        self.window_size = window_size  # Wh, Ww
+        self.num_heads = num_heads
+        head_dim = dim // num_heads
+        self.scale = qk_scale or head_dim ** -0.5
+
+        # define a parameter table of relative position bias
+        self.relative_position_bias_table = nn.Parameter(
+            torch.zeros((2 * window_size[0] - 1) * (2 * window_size[1] - 1), num_heads))  # 2*Wh-1 * 2*Ww-1, nH
+
+        # get pair-wise relative position index for each token inside the window
+        coords_h = torch.arange(self.window_size[0])
+        coords_w = torch.arange(self.window_size[1])
+        coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
+        coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
+        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
+        relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
+        relative_coords[:, :, 0] += self.window_size[0] - 1  # shift to start from 0
+        relative_coords[:, :, 1] += self.window_size[1] - 1
+        relative_coords[:, :, 0] *= 2 * self.window_size[1] - 1
+        relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
+        self.register_buffer("relative_position_index", relative_position_index)
+
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        
+        # Defining LORA parameters
+        self.lora_k = torch.nn.Linear(head_dim * self.window_size[0] * self.window_size[1], head_dim * lora_rank, bias=False)
+        self.lora_v = torch.nn.Linear(head_dim * self.window_size[0] * self.window_size[1], head_dim * lora_rank, bias=False)
+        self.lora_rpb = torch.nn.Linear(pow(self.window_size[0] * self.window_size[1], 2), self.window_size[0] * self.window_size[1] * lora_rank, bias=False)
+        
+        
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+        trunc_normal_(self.relative_position_bias_table, std=.02)
+        self.softmax = nn.Softmax(dim=-1)
+        
+        
+        # self.lora_k = torch.nn.Parameter(torch.ones(self.window_size[0] * self.window_size[1], lora_rank), requires_grad=True)
+        # self.lora_v = torch.nn.Parameter(torch.ones(self.window_size[0] * self.window_size[1], lora_rank), requires_grad=True)
+        # self.lora_rpb = torch.nn.Parameter(torch.ones(self.window_size[0] * self.window_size[1], lora_rank), requires_grad=True)
+        
+        # torch.nn.init.ones_(self.lora_k)
+        # torch.nn.init.ones_(self.lora_v)
+        # torch.nn.init.ones_(self.lora_rpb)
+        # torch.nn.init.xavier_normal_(self.lora_k)
+        # torch.nn.init.xavier_normal_(self.lora_v)
+        # torch.nn.init.xavier_normal_(self.lora_rpb)
+        
+    def forward(self, x, mask=None):
+        """
+        Args:
+            x: input features with shape of (num_windows*B, N, C)
+            mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
+        """
+        
+        B_, N, C = x.shape
+        qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+
+        q = q * self.scale
+        # attn = (q @ k.transpose(-2, -1))
+        # k_lora = k.transpose(-2, -1) @ self.lora_k
+        
+        # k: B_ * num_heads * N * C // self.num_heads
+        # flattened_k: B_ * self.num_heads * C // self.num_heads * N
+        flattened_k = k.transpose(-2, -1).reshape(B_, self.num_heads, -1)
+        k_lora = self.lora_k(flattened_k).reshape(B_, self.num_heads, C // self.num_heads, self.lora_rank)
+        
+        attn = (q @ k_lora)
+
+        relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
+            self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
+        relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
+        
+        # attn = attn + relative_position_bias.unsqueeze(0)
+        
+        rpb = relative_position_bias.unsqueeze(0)
+        # rpb_lora = rpb @ self.lora_rpb
+        flattened_rpb = rpb.reshape(self.num_heads, -1)
+        
+        # rpb_lora: num_heads * Window_size * window_size * lora_rank
+        rpb_lora = self.lora_rpb(flattened_rpb).reshape(self.num_heads, self.window_size[0] * self.window_size[1], self.lora_rank)
+        
+        attn = attn + rpb_lora
+
+        if mask is not None:
+            nW = mask.shape[0]
+            attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
+            attn = attn.view(-1, self.num_heads, N, N)
+            attn = self.softmax(attn)
+        else:
+            attn = self.softmax(attn)
+
+        attn = self.attn_drop(attn)
+
+        # x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
+        # v_lora = (v.transpose(-2, -1) @ self.lora_v).transpose(-2, -1)
+        # transpose and flatten to perform post ordered MatMul
+        flattened_v_lora = v.transpose(-2, -1).reshape(B_, self.num_heads, -1)
+        v_lora = self.lora_v(flattened_v_lora).reshape(B_, self.num_heads, C // self.num_heads, self.lora_rank)
+        v_lora = v_lora.transpose(-2,-1)
+        x = (attn @ v_lora).transpose(1, 2).reshape(B_, N, C)
+        
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x
+
+    def extra_repr(self) -> str:
+        return f'dim={self.dim}, window_size={self.window_size}, num_heads={self.num_heads}'
+
+    def flops(self, N):
+        # calculate flops for 1 window with token length of N
+        flops = 0
+        # qkv = self.qkv(x)
+        flops += N * self.dim * 3 * self.dim
+        
+        # attn = (q @ k.transpose(-2, -1))
+        # flops += self.num_heads * N * (self.dim // self.num_heads) * N
+        #  x = (attn @ v)
+        # flops += self.num_heads * N * N * (self.dim // self.num_heads)
+
+        # TODO: Figure out FLOPS compute
+        # # transform : k @ lora_k
+        # flops += k.shape[0] * k.shape[1] * 2 * k.shape[2] * k.shape[3] * k_lora.shape[3]
+        # # attn: q @ k_lora
+        # flops += q.shape[0] * q.shape[1] * 2 * q.shape[2] * q.shape[3] * k_lora.shape[3]
+        # # transform : v @ v_lora
+        # flops += v.shape[0] * v.shape[1] * 2 * v.shape[2] * v.shape[3] * v_lora.shape[3]
+        # # op : attn @ v_lora
+        # flops += attn.shape[0] * attn.shape[1] * 2 * attn.shape[2] * attn.shape[3] * v_lora.shape[3]
+
+        # x = self.proj(x)
+        flops += N * self.dim * self.dim
+        return flops
+
+
 class SwinTransformerBlock(nn.Module):
     r""" Swin Transformer Block.
 
@@ -192,7 +363,7 @@ class SwinTransformerBlock(nn.Module):
         fused_window_process (bool, optional): If True, use one kernel to fused window shift & window partition for acceleration, similar for the reversed part. Default: False
     """
 
-    def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
+    def __init__(self, dim, input_resolution, num_heads, lora_rank, layer_id, block_id, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm,
                  fused_window_process=False):
@@ -210,9 +381,15 @@ class SwinTransformerBlock(nn.Module):
         assert 0 <= self.shift_size < self.window_size, "shift_size must in 0-window_size"
 
         self.norm1 = norm_layer(dim)
-        self.attn = WindowAttention(
-            dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
-            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
+        
+        if layer_id == 3 and block_id == 0:
+            self.attn = LORA_WindowAttention(dim, window_size=to_2tuple(self.window_size),
+                                            num_heads=num_heads, lora_rank=lora_rank, qkv_bias=qkv_bias,
+                                            qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
+        else:
+            self.attn = WindowAttention(
+                dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
+                qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
@@ -241,7 +418,7 @@ class SwinTransformerBlock(nn.Module):
             attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
         else:
             attn_mask = None
-
+                
         self.register_buffer("attn_mask", attn_mask)
         self.fused_window_process = fused_window_process
 
@@ -382,7 +559,7 @@ class BasicLayer(nn.Module):
         fused_window_process (bool, optional): If True, use one kernel to fused window shift & window partition for acceleration, similar for the reversed part. Default: False
     """
 
-    def __init__(self, dim, input_resolution, depth, num_heads, window_size,
+    def __init__(self, layer_id, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False,
                  fused_window_process=False):
@@ -396,15 +573,19 @@ class BasicLayer(nn.Module):
         # build blocks
         self.blocks = nn.ModuleList([
             SwinTransformerBlock(dim=dim, input_resolution=input_resolution,
-                                 num_heads=num_heads, window_size=window_size,
-                                 shift_size=0 if (i % 2 == 0) else window_size // 2,
+                                 num_heads=num_heads,
+                                 lora_rank=LORA_RANK_DICT['layers.' + str(layer_id) + ".blocks." + str(block_id) + ".attn"][LORA_SELECTOR],
+                                 layer_id=layer_id,
+                                 block_id=block_id,
+                                 window_size=window_size,
+                                 shift_size=0 if (block_id % 2 == 0) else window_size // 2,
                                  mlp_ratio=mlp_ratio,
                                  qkv_bias=qkv_bias, qk_scale=qk_scale,
                                  drop=drop, attn_drop=attn_drop,
-                                 drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+                                 drop_path=drop_path[block_id] if isinstance(drop_path, list) else drop_path,
                                  norm_layer=norm_layer,
                                  fused_window_process=fused_window_process)
-            for i in range(depth)])
+            for block_id in range(depth)])
 
         # patch merging layer
         if downsample is not None:
@@ -546,7 +727,7 @@ class SwinTransformer(nn.Module):
         # build layers
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
-            layer = BasicLayer(dim=int(embed_dim * 2 ** i_layer),
+            layer = BasicLayer(layer_id=i_layer, dim=int(embed_dim * 2 ** i_layer),
                                input_resolution=(patches_resolution[0] // (2 ** i_layer),
                                                  patches_resolution[1] // (2 ** i_layer)),
                                depth=depths[i_layer],

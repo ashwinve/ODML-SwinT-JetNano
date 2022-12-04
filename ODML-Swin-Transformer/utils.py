@@ -27,6 +27,13 @@ def load_checkpoint(config, model, optimizer, lr_scheduler, loss_scaler, logger)
             checkpoint['model']['head.weight'] = sd['head.weight']
             checkpoint['model']['head.bias'] = sd['head.bias']
             
+            checkpoint['model']['head.bias'] = sd['head.bias']
+        
+        if 0:
+            checkpoint['model']['layers.3.blocks.0.attn.lora_k.weight'] = sd['layers.3.blocks.0.attn.lora_k.weight']
+            checkpoint['model']['layers.3.blocks.0.attn.lora_v.weight'] = sd['layers.3.blocks.0.attn.lora_v.weight']
+            checkpoint['model']['layers.3.blocks.0.attn.lora_rpb.weight'] = sd['layers.3.blocks.0.attn.lora_rpb.weight']
+            
     msg = model.load_state_dict(checkpoint['model'], strict=False)
     logger.info(msg)
     max_accuracy = 0.0

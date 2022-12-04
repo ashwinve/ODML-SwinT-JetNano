@@ -30,6 +30,7 @@ from logger import create_logger
 from utils import load_checkpoint, load_pretrained, save_checkpoint, NativeScalerWithGradNormCount, auto_resume_helper, \
     reduce_tensor
 
+param_list_requries_grad = None
 
 def parse_option():
     parser = argparse.ArgumentParser('Swin Transformer training and evaluation script', add_help=False)
@@ -83,6 +84,8 @@ def parse_option():
 
 
 def main(config):
+    global param_list_requries_grad
+    
     if config.EVAL_MODE:
         dataset_val, data_loader_val, mixup_fn = build_loader(config, val_only=True)
     else:
@@ -90,9 +93,21 @@ def main(config):
     
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
     model = build_model(config)
+    
+    # dummy_input = torch.randn(4, 3, 224, 224, device="cuda")
+    # torch.onnx.export(model, dummy_input, "swinT.onnx", verbose=True)
+    
     logger.info(str(model))
     
     # Freeze specific layers for downstream task training
+    # model_named_params = list(model.named_parameters())
+    # num_params = len(model_named_params)
+    # for param_iter in range(num_params):
+    #     param_name, param = model_named_params[param_iter]
+    #     if "lora" not in param_name and not ('head.weight' in param_name or 'head.bias' in param_name):
+    #         param.requires_grad = False
+    
+    
     if(config.MODEL.SWIN.FREEZE_LAYERS and len(config.MODEL.SWIN.FREEZE_LAYER_INDEX) > 0):
         if not config.MODEL.SWIN.FREEZE_AUTHOR_METHOD:
             logger.info(f"Freezing Layers: {config.MODEL.SWIN.FREEZE_LAYER_INDEX}")
@@ -104,10 +119,13 @@ def main(config):
                 if(param_iter < 4):
                     # First 4 are patch_embed proj and norm -> assume freeze
                     param.requires_grad = False
-                elif('layers' in param_name):
+                elif('layers' in param_name and "lora" not in param_name):
                     if int(param_name.split(".")[1]) in config.MODEL.SWIN.FREEZE_LAYER_INDEX:
                         # freeze param
                         param.requires_grad = False
+                # elif('norm.weight' in param_name or 'norm.bias' in param_name
+                #         or 'head.weight' in param_name or 'head.bias' in param_name):
+                #     param.requires_grad = False
                 else:
                     pass
         else:
@@ -122,7 +140,13 @@ def main(config):
                     for param_iter in range(num_params):
                         named_param_list[param_iter][1].requires_grad = False
     
-
+    model_named_params = list(model.named_parameters())
+    # num_params = len(model_named_params)
+    # param_list = []
+    # for param_iter in range(num_params):
+    #     param_name, param = model_named_params[param_iter]
+    #     if "lora" in param_name: param_list.append(param)
+        
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f"number of params: {n_parameters}")
     if hasattr(model, 'flops'):
@@ -187,6 +211,17 @@ def main(config):
         throughput(data_loader_val, model, logger)
         return
 
+    
+    model_named_params = list(model.named_parameters())
+    num_params = len(model_named_params)
+    init_param_list = []
+    for param_iter in range(num_params):
+        param_name, param = model_named_params[param_iter]
+        if "lora" in param_name: init_param_list.append(param)
+    
+    logger.info("\n Before Training: parameter list \n")
+    logger.info(init_param_list)
+    
     logger.info("Start training")
     start_time = time.time()
     for epoch in range(config.TRAIN.START_EPOCH, config.TRAIN.EPOCHS):
@@ -209,13 +244,39 @@ def main(config):
         logger.info(f"Accuracy of the network on the {len(dataset_val)} test images: {acc1:.1f}%")
         max_accuracy = max(max_accuracy, acc1)
         logger.info(f'Max accuracy: {max_accuracy:.2f}%')
+        
+        for param_name, param in model.named_parameters():
+            if param_name in param_list_requries_grad:
+                if param.grad is not None:
+                    # logger.info(param.grad)
+                    grad_norm = grad_norm + param.grad.sum()
+                else:
+                    logger.info(param_name)
+        sys.exit()
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     logger.info('Training time {}'.format(total_time_str))
+    
+    
+    model_named_params = list(model.named_parameters())
+    num_params = len(model_named_params)
+    param_list = []
+    for param_iter in range(num_params):
+        param_name, param = model_named_params[param_iter]
+        if "lora" in param_name: param_list.append(param)
+    
+    logger.info("\n After Training: parameter list \n")
+    logger.info(param_list)
+    
+    logger.info(init_param_list == param_list)
+
 
 
 def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mixup_fn, lr_scheduler, loss_scaler):
+    global param_list_requries_grad
+    grad_norm = 0
+    
     model.train()
     optimizer.zero_grad()
 
@@ -300,6 +361,7 @@ def validate(config, data_loader, model):
 
     end = time.time()
     for idx, (images, target) in enumerate(data_loader):
+        
         images = images.cuda(non_blocking=False)
         target = target.cuda(non_blocking=False)
 

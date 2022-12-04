@@ -20,32 +20,38 @@ def build_optimizer(config, model, simmim=False, is_pretrain=False):
     """
     Build optimizer, set weight decay of normalization to 0 by default.
     """
-    skip = {}
-    skip_keywords = {}
-    if hasattr(model, 'no_weight_decay'):
-        skip = model.no_weight_decay()
-    if hasattr(model, 'no_weight_decay_keywords'):
-        skip_keywords = model.no_weight_decay_keywords()
-    if simmim:
-        if is_pretrain:
-            parameters = get_pretrain_param_groups(model, skip, skip_keywords)
-        else:
-            depths = config.MODEL.SWIN.DEPTHS if config.MODEL.TYPE == 'swin' else config.MODEL.SWINV2.DEPTHS
-            num_layers = sum(depths)
-            get_layer_func = partial(get_swin_layer, num_layers=num_layers + 2, depths=depths)
-            scales = list(config.TRAIN.LAYER_DECAY ** i for i in reversed(range(num_layers + 2)))
-            parameters = get_finetune_param_groups(model, config.TRAIN.BASE_LR, config.TRAIN.WEIGHT_DECAY, get_layer_func, scales, skip, skip_keywords)
-    else:
-        parameters = set_weight_decay(model, skip, skip_keywords)
-
+    # skip = {}
+    # skip_keywords = {}
+    # if hasattr(model, 'no_weight_decay'):
+    #     skip = model.no_weight_decay()
+    # if hasattr(model, 'no_weight_decay_keywords'):
+    #     skip_keywords = model.no_weight_decay_keywords()
+    # if simmim:
+    #     if is_pretrain:
+    #         parameters = get_pretrain_param_groups(model, skip, skip_keywords)
+    #     else:
+    #         depths = config.MODEL.SWIN.DEPTHS if config.MODEL.TYPE == 'swin' else config.MODEL.SWINV2.DEPTHS
+    #         num_layers = sum(depths)
+    #         get_layer_func = partial(get_swin_layer, num_layers=num_layers + 2, depths=depths)
+    #         scales = list(config.TRAIN.LAYER_DECAY ** i for i in reversed(range(num_layers + 2)))
+    #         parameters = get_finetune_param_groups(model, config.TRAIN.BASE_LR, config.TRAIN.WEIGHT_DECAY, get_layer_func, scales, skip, skip_keywords)
+    # else:
+    #     parameters = set_weight_decay(model, skip, skip_keywords)
+    
+    # parameters = [p[1] for p in model.named_parameters() if "lora" in p[0]]
+    parameters = [p[1] for p in model.named_parameters()]
+                  
     opt_lower = config.TRAIN.OPTIMIZER.NAME.lower()
     optimizer = None
     if opt_lower == 'sgd':
+        # optimizer = optim.SGD(parameters, momentum=config.TRAIN.OPTIMIZER.MOMENTUM, nesterov=True,
+        #                       lr=config.TRAIN.BASE_LR, weight_decay=config.TRAIN.WEIGHT_DECAY)
         optimizer = optim.SGD(parameters, momentum=config.TRAIN.OPTIMIZER.MOMENTUM, nesterov=True,
                               lr=config.TRAIN.BASE_LR, weight_decay=config.TRAIN.WEIGHT_DECAY)
     elif opt_lower == 'adamw':
-        optimizer = optim.AdamW(parameters, eps=config.TRAIN.OPTIMIZER.EPS, betas=config.TRAIN.OPTIMIZER.BETAS,
-                                lr=config.TRAIN.BASE_LR, weight_decay=config.TRAIN.WEIGHT_DECAY)
+        optimizer = optim.AdamW(parameters, lr=config.TRAIN.BASE_LR)
+        # optimizer = optim.AdamW(parameters, eps=config.TRAIN.OPTIMIZER.EPS, betas=config.TRAIN.OPTIMIZER.BETAS,
+        #                         lr=config.TRAIN.BASE_LR, weight_decay=config.TRAIN.WEIGHT_DECAY)
     elif opt_lower == 'fused_adam':
         optimizer = FusedAdam(parameters, eps=config.TRAIN.OPTIMIZER.EPS, betas=config.TRAIN.OPTIMIZER.BETAS,
                               lr=config.TRAIN.BASE_LR, weight_decay=config.TRAIN.WEIGHT_DECAY)
