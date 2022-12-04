@@ -11,7 +11,7 @@ MODEL:
     NUM_HEADS: [ 3, 6, 12, 24 ]
     WINDOW_SIZE: 7
     FREEZE_LAYERS: True
-    FREEZE_LAYER_INDEX: [0, 2, 3]
+    FREEZE_LAYER_INDEX: [0, 1, 2]
     FREEZE_AUTHOR_METHOD: False
   # Used to force loss function to torch.nn.CrossEntropyLoss()
   LABEL_SMOOTHING: 0.0

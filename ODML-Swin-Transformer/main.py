@@ -171,10 +171,11 @@ def main(config):
 
     if config.MODEL.RESUME:
         max_accuracy = load_checkpoint(config, model_without_ddp, optimizer, lr_scheduler, loss_scaler, logger)
-        acc1, acc5, loss = validate(config, data_loader_val, model)
-        logger.info(f"Accuracy (Top 1%) of the network on the {len(dataset_val)} test images: {acc1:.1f}%")
-        logger.info(f"Accuracy (Top 5%) of the network on the {len(dataset_val)} test images: {acc5:.1f}%")
+        
         if config.EVAL_MODE:
+            acc1, acc5, loss = validate(config, data_loader_val, model)
+            logger.info(f"Accuracy (Top 1%) of the network on the {len(dataset_val)} test images: {acc1:.1f}%")
+            logger.info(f"Accuracy (Top 5%) of the network on the {len(dataset_val)} test images: {acc5:.1f}%")
             return
 
     if config.MODEL.PRETRAINED and (not config.MODEL.RESUME):
