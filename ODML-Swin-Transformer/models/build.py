@@ -32,7 +32,7 @@ def build_model(config, is_pretrain=False):
         return model
 
     if model_type == 'swin':
-        model = SwinTransformer(img_size=config.DATA.IMG_SIZE,
+        model = SwinTransformer(freeze_layer_ids=config.MODEL.SWIN.FREEZE_LAYER_INDEX, img_size=config.DATA.IMG_SIZE,
                                 patch_size=config.MODEL.SWIN.PATCH_SIZE,
                                 in_chans=config.MODEL.SWIN.IN_CHANS,
                                 num_classes=config.MODEL.NUM_CLASSES,

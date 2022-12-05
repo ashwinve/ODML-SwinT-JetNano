@@ -196,10 +196,11 @@ def main(config):
     if config.MODEL.RESUME:
         max_accuracy = load_checkpoint(config, model_without_ddp, optimizer, lr_scheduler, loss_scaler, logger)
         
+        acc1, acc5, loss = validate(config, data_loader_val, model)
+        logger.info(f"Accuracy (Top 1%) of the network on the {len(dataset_val)} test images: {acc1:.1f}%")
+        logger.info(f"Accuracy (Top 5%) of the network on the {len(dataset_val)} test images: {acc5:.1f}%")
+        
         if config.EVAL_MODE:
-            acc1, acc5, loss = validate(config, data_loader_val, model)
-            logger.info(f"Accuracy (Top 1%) of the network on the {len(dataset_val)} test images: {acc1:.1f}%")
-            logger.info(f"Accuracy (Top 5%) of the network on the {len(dataset_val)} test images: {acc5:.1f}%")
             return
 
     if config.MODEL.PRETRAINED and (not config.MODEL.RESUME):
@@ -245,14 +246,13 @@ def main(config):
         max_accuracy = max(max_accuracy, acc1)
         logger.info(f'Max accuracy: {max_accuracy:.2f}%')
         
-        for param_name, param in model.named_parameters():
-            if param_name in param_list_requries_grad:
-                if param.grad is not None:
-                    # logger.info(param.grad)
-                    grad_norm = grad_norm + param.grad.sum()
-                else:
-                    logger.info(param_name)
-        sys.exit()
+        # for param_name, param in model.named_parameters():
+        #     if param_name in param_list_requries_grad:
+        #         if param.grad is not None:
+        #             # logger.info(param.grad) 
+        #             grad_norm = grad_norm + param.grad.sum()
+        #         else:
+        #             logger.info(param_name)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
@@ -343,7 +343,7 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
     
     # step lr_scheduler every epoch
     if config.TRAIN.LR_SCHEDULER.STEP_EPOCH == 0:
-        lr_scheduler.step()
+        lr_scheduler.step(loss)
         
     epoch_time = time.time() - start
     logger.info(f"EPOCH {epoch} training takes {datetime.timedelta(seconds=int(epoch_time))}")

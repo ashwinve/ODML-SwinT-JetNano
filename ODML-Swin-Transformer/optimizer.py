@@ -38,8 +38,12 @@ def build_optimizer(config, model, simmim=False, is_pretrain=False):
     # else:
     #     parameters = set_weight_decay(model, skip, skip_keywords)
     
-    # parameters = [p[1] for p in model.named_parameters() if "lora" in p[0]]
-    parameters = [p[1] for p in model.named_parameters()]
+    parameters = []
+    for p in model.named_parameters():
+        # int(param_name.split(".")[1]) in config.MODEL.SWIN.FREEZE_LAYER_INDEX
+        if "lora" in p[0] and int(p[0].split(".")[1]) not in config.MODEL.SWIN.FREEZE_LAYER_INDEX:
+            parameters.append(p[1])
+    # parameters = [p[1] for p in model.named_parameters()]
                   
     opt_lower = config.TRAIN.OPTIMIZER.NAME.lower()
     optimizer = None

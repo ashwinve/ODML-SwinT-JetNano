@@ -363,7 +363,7 @@ class SwinTransformerBlock(nn.Module):
         fused_window_process (bool, optional): If True, use one kernel to fused window shift & window partition for acceleration, similar for the reversed part. Default: False
     """
 
-    def __init__(self, dim, input_resolution, num_heads, lora_rank, layer_id, block_id, window_size=7, shift_size=0,
+    def __init__(self, freeze_layers_ids, dim, input_resolution, num_heads, lora_rank, layer_id, block_id, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm,
                  fused_window_process=False):
@@ -382,7 +382,7 @@ class SwinTransformerBlock(nn.Module):
 
         self.norm1 = norm_layer(dim)
         
-        if layer_id == 3 and block_id == 0:
+        if (layer_id == 2 and block_id == 4) or (layer_id == 3 and (block_id % 2) == 0):
             self.attn = LORA_WindowAttention(dim, window_size=to_2tuple(self.window_size),
                                             num_heads=num_heads, lora_rank=lora_rank, qkv_bias=qkv_bias,
                                             qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
@@ -559,7 +559,7 @@ class BasicLayer(nn.Module):
         fused_window_process (bool, optional): If True, use one kernel to fused window shift & window partition for acceleration, similar for the reversed part. Default: False
     """
 
-    def __init__(self, layer_id, dim, input_resolution, depth, num_heads, window_size,
+    def __init__(self, freeze_layers_ids, layer_id, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False,
                  fused_window_process=False):
@@ -572,7 +572,7 @@ class BasicLayer(nn.Module):
 
         # build blocks
         self.blocks = nn.ModuleList([
-            SwinTransformerBlock(dim=dim, input_resolution=input_resolution,
+            SwinTransformerBlock(freeze_layers_ids=freeze_layers_ids, dim=dim, input_resolution=input_resolution,
                                  num_heads=num_heads,
                                  lora_rank=LORA_RANK_DICT['layers.' + str(layer_id) + ".blocks." + str(block_id) + ".attn"][LORA_SELECTOR],
                                  layer_id=layer_id,
@@ -690,7 +690,7 @@ class SwinTransformer(nn.Module):
         fused_window_process (bool, optional): If True, use one kernel to fused window shift & window partition for acceleration, similar for the reversed part. Default: False
     """
 
-    def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000,
+    def __init__(self, freeze_layers_ids=[], img_size=224, patch_size=4, in_chans=3, num_classes=1000,
                  embed_dim=96, depths=[2, 2, 6, 2], num_heads=[3, 6, 12, 24],
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
@@ -727,7 +727,7 @@ class SwinTransformer(nn.Module):
         # build layers
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
-            layer = BasicLayer(layer_id=i_layer, dim=int(embed_dim * 2 ** i_layer),
+            layer = BasicLayer(freeze_layers_ids=freeze_layers_ids, layer_id=i_layer, dim=int(embed_dim * 2 ** i_layer),
                                input_resolution=(patches_resolution[0] // (2 ** i_layer),
                                                  patches_resolution[1] // (2 ** i_layer)),
                                depth=depths[i_layer],
