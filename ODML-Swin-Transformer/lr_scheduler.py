@@ -54,7 +54,7 @@ def build_scheduler(config, optimizer, n_iter_per_epoch):
         
         # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=config.TRAIN.EPOCHS)
         lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, mode='min', factor=0.1,
-                                                                  patience=15, min_lr=config.TRAIN.MIN_LR, verbose=True)
+                                                                  patience=5, min_lr=config.TRAIN.MIN_LR, verbose=True)
         
     elif config.TRAIN.LR_SCHEDULER.NAME == 'linear':
         lr_scheduler = LinearLRScheduler(
