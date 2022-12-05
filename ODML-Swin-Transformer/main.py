@@ -242,8 +242,9 @@ def main(config):
         
         # if (epoch % config.SAVE_FREQ == 0 or epoch == (config.TRAIN.EPOCHS - 1)):
         if (acc1 > max_accuracy):
+            logger.info(f"Saving best model: L2B4_L3B0_Epochs{config.TRAIN.EPOCHS}_Run{config.TRAIN.RUN_ID}.pth")
             save_checkpoint(config, epoch, model_without_ddp, acc1, optimizer, lr_scheduler, loss_scaler,
-                            logger, f"L2B4_L3B0_Epochs{config.TRAIN.EPOCHS}.pth")
+                            logger, f"L2B4_L3B0_Epochs{config.TRAIN.EPOCHS}_Run{config.TRAIN.RUN_ID}.pth")
         
         max_accuracy = max(max_accuracy, acc1)
         logger.info(f'Max accuracy: {max_accuracy:.2f}%')

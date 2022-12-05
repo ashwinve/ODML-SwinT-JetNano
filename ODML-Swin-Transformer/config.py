@@ -172,12 +172,15 @@ _C.TRAIN.USE_CHECKPOINT = False
 # If loading a checkpoint of RESISC45 model, turn this off
 _C.TRAIN.THROW_MLP_SD = True
 _C.TRAIN.OMIT_LR_STATE_DICT = False
+_C.TRAIN.OMIT_OPTIMIZER_STATE_DICT = False
+_C.TRAIN.RUN_ID = 0
 
 # LR scheduler
 _C.TRAIN.LR_SCHEDULER = CN()
 _C.TRAIN.LR_SCHEDULER.NAME = 'cosine'
 # Epoch interval to decay LR, used in StepLRScheduler
 _C.TRAIN.LR_SCHEDULER.DECAY_EPOCHS = 30
+_C.TRAIN.LR_SCHEDULER.PATIENCE = 0
 # LR decay rate, used in StepLRScheduler
 _C.TRAIN.LR_SCHEDULER.DECAY_RATE = 0.1
 # warmup_prefix used in CosineLRScheduler

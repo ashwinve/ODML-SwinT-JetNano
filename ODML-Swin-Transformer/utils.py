@@ -10,6 +10,7 @@ import torch
 import torch.distributed as dist
 from torch._six import inf
 import copy
+import sys
 
 def load_checkpoint(config, model, optimizer, lr_scheduler, loss_scaler, logger):
     logger.info(f"==============> Resuming form {config.MODEL.RESUME}....................")
@@ -29,20 +30,16 @@ def load_checkpoint(config, model, optimizer, lr_scheduler, loss_scaler, logger)
             
             checkpoint['model']['head.bias'] = sd['head.bias']
         
-        if 0:
-            checkpoint['model']['layers.3.blocks.0.attn.lora_k.weight'] = sd['layers.3.blocks.0.attn.lora_k.weight']
-            checkpoint['model']['layers.3.blocks.0.attn.lora_v.weight'] = sd['layers.3.blocks.0.attn.lora_v.weight']
-            checkpoint['model']['layers.3.blocks.0.attn.lora_rpb.weight'] = sd['layers.3.blocks.0.attn.lora_rpb.weight']
-            
     msg = model.load_state_dict(checkpoint['model'], strict=False)
     logger.info(msg)
     max_accuracy = 0.0
     if not config.EVAL_MODE and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
         config.defrost()
         
-        if not config.TRAIN.OMIT_LR_STATE_DICT:
+        if not config.TRAIN.OMIT_OPTIMIZER_STATE_DICT:
             optimizer.load_state_dict(checkpoint['optimizer'])
-            
+        
+        if not config.TRAIN.OMIT_LR_STATE_DICT:
             lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
             
             if 'scaler' in checkpoint:
@@ -58,6 +55,7 @@ def load_checkpoint(config, model, optimizer, lr_scheduler, loss_scaler, logger)
 
     del checkpoint
     torch.cuda.empty_cache()
+    
     return max_accuracy
 
 

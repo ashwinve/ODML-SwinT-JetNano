@@ -40,10 +40,9 @@ def build_optimizer(config, model, simmim=False, is_pretrain=False):
     
     parameters = []
     for p in model.named_parameters():
-        # int(param_name.split(".")[1]) in config.MODEL.SWIN.FREEZE_LAYER_INDEX
+        # Only register LORA in non-frozen layer for optimization
         if "lora" in p[0] and int(p[0].split(".")[1]) not in config.MODEL.SWIN.FREEZE_LAYER_INDEX:
             parameters.append(p[1])
-    # parameters = [p[1] for p in model.named_parameters()]
                   
     opt_lower = config.TRAIN.OPTIMIZER.NAME.lower()
     optimizer = None

@@ -34,18 +34,21 @@ TRAIN:
   # Required when starting with ImageNet-1K -> RESISC45 for the first time
   # If loading a checkpoint of RESISC45 model, turn this off
   THROW_MLP_SD: False
+  OMIT_OPTIMIZER_STATE_DICT: False
   OMIT_LR_STATE_DICT: True
+  RUN_ID: 3
   CLIP_GRAD: 2.5
-  EPOCHS: 10
-  BASE_LR: 1e-2
+  EPOCHS: 8
+  BASE_LR: 1e-3
   WEIGHT_DECAY: 5e-5
   WARMUP_EPOCHS: 0
   WARMUP_LR: 1e-5
-  MIN_LR: 5e-6
+  MIN_LR: 1e-5
   LR_SCHEDULER:
     NAME: 'cosine'
     # 0: Step every epoch, 1: Step every batch
     STEP_EPOCH: 0
+    PATIENCE: 2
   OPTIMIZER:
     NAME: 'adamw'
 TEST:
