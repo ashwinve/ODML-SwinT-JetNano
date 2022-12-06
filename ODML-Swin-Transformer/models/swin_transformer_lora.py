@@ -8,41 +8,24 @@
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
-import copy
-import numpy as np
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 
 learning_rate = 1e-03
 
-LORA_SELECTOR = 1
-# LORA_RANK_DICT = {
-#     'layers.0.blocks.0.attn': [9,   12, 13, 49],
-#     'layers.0.blocks.1.attn': [28,  35, 38, 49],
-#     'layers.1.blocks.0.attn': [24,  32, 39, 49],
-#     'layers.1.blocks.1.attn': [19,  22, 23, 49],
-#     'layers.2.blocks.0.attn': [16,  18, 19, 49],
-#     'layers.2.blocks.1.attn': [20,  22, 22, 49],
-#     'layers.2.blocks.2.attn': [22,  26, 30, 49],
-#     'layers.2.blocks.3.attn': [22,  25, 26, 49],
-#     'layers.2.blocks.4.attn': [24,  24, 25, 49],
-#     'layers.2.blocks.5.attn': [23,  24, 24, 49],
-#     'layers.3.blocks.0.attn': [20,  21, 22, 49],
-#     'layers.3.blocks.1.attn': [16,  16, 17, 49]
-#     }
-
+LORA_SELECTOR = 0
 LORA_RANK_DICT = {
-    'layers.0.blocks.0.attn': [19, 38, 40, 44, 48, 96],
-    'layers.0.blocks.1.attn': [19, 38, 40, 44, 48, 96],
-    'layers.1.blocks.0.attn': [38, 75, 80, 88, 96, 192],
-    'layers.1.blocks.1.attn': [38, 75, 80, 88, 96, 192],
-    'layers.2.blocks.0.attn': [75, 150, 160, 175, 192, 384],
-    'layers.2.blocks.1.attn': [75, 150, 160, 175, 192, 384],
-    'layers.2.blocks.2.attn': [75, 150, 160, 175, 192, 384],
-    'layers.2.blocks.3.attn': [75, 150, 160, 175, 192, 384],
-    'layers.2.blocks.4.attn': [75, 150, 160, 175, 192, 384],
-    'layers.2.blocks.5.attn': [75, 150, 160, 175, 192, 384],
-    'layers.3.blocks.0.attn': [150, 300, 325, 350, 384, 768],
-    'layers.3.blocks.1.attn': [150, 300, 325, 350, 384, 768]
+    'layers.0.blocks.0.attn': [9,   12, 13, 49],
+    'layers.0.blocks.1.attn': [28,  35, 38, 49],
+    'layers.1.blocks.0.attn': [24,  32, 39, 49],
+    'layers.1.blocks.1.attn': [19,  22, 23, 49],
+    'layers.2.blocks.0.attn': [16,  18, 19, 49],
+    'layers.2.blocks.1.attn': [20,  22, 22, 49],
+    'layers.2.blocks.2.attn': [22,  26, 30, 49],
+    'layers.2.blocks.3.attn': [22,  25, 26, 49],
+    'layers.2.blocks.4.attn': [24,  24, 25, 49],
+    'layers.2.blocks.5.attn': [23,  24, 24, 49],
+    'layers.3.blocks.0.attn': [20,  21, 22, 49],
+    'layers.3.blocks.1.attn': [16,  16, 17, 49]
     }
 
 
@@ -158,38 +141,17 @@ class LORA_WindowAttention(nn.Module):
         trunc_normal_(self.relative_position_bias_table, std=.02)
         self.softmax = nn.Softmax(dim=-1)
         
-
-        """
-        dim * dim
-        """
-        # Defining separate weights parameters
-        self.q_wUSprime = torch.nn.Parameter(torch.FloatTensor(dim, lora_rank), requires_grad=False)
-        self.q_wVprime = torch.nn.Parameter(torch.FloatTensor(lora_rank, dim), requires_grad=False)
-        self.q_b = torch.nn.Parameter(torch.FloatTensor(dim), requires_grad=False)
+        # Defining LORA parameters
+        self.lora_k = torch.nn.Parameter(torch.FloatTensor(self.window_size[0] * self.window_size[1], lora_rank), requires_grad=True)
+        self.lora_v = torch.nn.Parameter(torch.FloatTensor(self.window_size[0] * self.window_size[1], lora_rank), requires_grad=True)
+        self.lora_rpb = torch.nn.Parameter(torch.FloatTensor(self.window_size[0] * self.window_size[1], lora_rank), requires_grad=True)
         
-
-        self.k_wUSprime = torch.nn.Parameter(torch.FloatTensor(dim, lora_rank), requires_grad=False)
-        self.k_wVprime = torch.nn.Parameter(torch.FloatTensor(lora_rank, dim), requires_grad=False)
-        self.k_b = torch.nn.Parameter(torch.FloatTensor(dim), requires_grad=False)
-
-        self.v_wUSprime = torch.nn.Parameter(torch.FloatTensor(dim, lora_rank), requires_grad=False)
-        self.v_wVprime = torch.nn.Parameter(torch.FloatTensor(lora_rank, dim), requires_grad=False)
-        self.v_b = torch.nn.Parameter(torch.FloatTensor(dim), requires_grad=False)
-        
-        
-
-        self.lora_rank = lora_rank
-        # self.lora_k = torch.nn.Linear(head_dim * self.window_size[0] * self.window_size[1], head_dim * lora_rank, bias=False)
-        # self.lora_v = torch.nn.Linear(head_dim * self.window_size[0] * self.window_size[1], head_dim * lora_rank, bias=False)
-        # self.lora_rpb = torch.nn.Linear(self.window_size[0] * self.window_size[1] * self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1] * lora_rank, bias=False)
-
-
         # torch.nn.init.ones_(self.lora_k)
         # torch.nn.init.ones_(self.lora_v)
         # torch.nn.init.ones_(self.lora_rpb)
-        # torch.nn.init.xavier_normal_(self.lora_k)
-        # torch.nn.init.xavier_normal_(self.lora_v)
-        # torch.nn.init.xavier_normal_(self.lora_rpb)
+        torch.nn.init.xavier_normal_(self.lora_k)
+        torch.nn.init.xavier_normal_(self.lora_v)
+        torch.nn.init.xavier_normal_(self.lora_rpb)
 
         self.optimizer = torch.optim.AdamW(self.parameters(), lr=learning_rate)
 
@@ -220,29 +182,6 @@ class LORA_WindowAttention(nn.Module):
         
         self.load_state_dict(new_sd)
 
-    def init_low_rank_approx_weights(self):
-        new_sd = copy.deepcopy(self.state_dict())
-
-        qkv_w = self.state_dict()['qkv.weight'].T.reshape(self.dim, 3, self.dim).permute(1,0,2) # reshape (dim, dim*3) => (dim, 3, dim) ; permute (dim, 3, dim) => (3, dim, dim)
-        b = self.state_dict()['qkv.bias'].reshape(3, self.dim)
-
-        new_sd['q_b'] = b[0]
-        new_sd['k_b'] = b[1]
-        new_sd['v_b'] = b[2]
-
-        qw_uPrime, qw_sPrime, new_sd['q_wVprime'] = np.linalg.svd(qkv_w[0], full_matrices=False, compute_uv=True)
-        kw_uPrime, kw_sPrime, new_sd['k_wVprime'] = np.linalg.svd(qkv_w[1], full_matrices=False, compute_uv=True)
-        vw_uPrime, vw_sPrime, new_sd['v_wVprime'] = np.linalg.svd(qkv_w[2], full_matrices=False, compute_uv=True)
-
-        new_sd['q_wVprime'] = torch.tensor(new_sd['q_wVprime'][:self.lora_rank, :])
-        new_sd['k_wVprime'] = torch.tensor(new_sd['k_wVprime'][:self.lora_rank, :])
-        new_sd['v_wVprime'] = torch.tensor(new_sd['v_wVprime'][:self.lora_rank, :])
-
-        new_sd['q_wUSprime'] = torch.tensor( qw_uPrime[:, :self.lora_rank] @ np.diag(qw_sPrime[:self.lora_rank]) )
-        new_sd['k_wUSprime'] = torch.tensor( kw_uPrime[:, :self.lora_rank] @ np.diag(kw_sPrime[:self.lora_rank]) )
-        new_sd['v_wUSprime'] = torch.tensor( vw_uPrime[:, :self.lora_rank] @ np.diag(vw_sPrime[:self.lora_rank]) )
-        
-        self.load_state_dict(new_sd)
 
     def forward(self, x, mask=None):
         """
@@ -251,41 +190,30 @@ class LORA_WindowAttention(nn.Module):
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
         """
         B_, N, C = x.shape
-
-        # Using the low Rank Approximation of qkv weights : out = X @ W.T + b, where W.T is approximated
-        q = (((x @ self.q_wUSprime) @ (self.q_wVprime)) + self.q_b).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
-        k = (((x @ self.k_wUSprime) @ (self.k_wVprime)) + self.k_b).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
-        v = (((x @ self.v_wUSprime) @ (self.v_wVprime)) + self.v_b).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
-
-        # qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        # q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+        qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
 
         q = q * self.scale
-        attn = (q @ k.transpose(-2, -1))
-        # k_lora = k.transpose(-2, -1) @ self.lora_k
-
-        # flattened_k = k.transpose(-2, -1).reshape(B_, self.num_heads, -1)
-        # k_lora = self.lora_k(flattened_k).reshape(B_, self.num_heads, C // self.num_heads, self.lora_rank)
-
-
-        # attn = (q @ k_lora)
+        # attn = (q @ k.transpose(-2, -1))
+        k_lora = k.transpose(-2, -1) @ self.lora_k
+        attn = (q @ k_lora)
 
         relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
             self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
         relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
         
-        attn = attn + relative_position_bias.unsqueeze(0)
+        # attn = attn + relative_position_bias.unsqueeze(0)
         
-        # rpb = relative_position_bias.unsqueeze(0)
-        # # rpb_lora = rpb @ self.lora_rpb
-        # flattened_rpb = rpb.reshape(self.num_heads, -1)
-        
-        # # rpb_lora: num_heads * Window_size * window_size * lora_rank
-        # rpb_lora = self.lora_rpb(flattened_rpb).view(self.num_heads, self.window_size[0] * self.window_size[1], self.lora_rank)
-
-        # attn = attn + rpb_lora
+        rpb = relative_position_bias.unsqueeze(0)
+        rpb_lora = rpb @ self.lora_rpb
+        attn = attn + rpb_lora
 
         if mask is not None:
+            print("lora_k: ", self.lora_k.shape)
+            print("lora_v: ", self.lora_v.shape)
+            print("lora_rpb: ", self.lora_rpb.shape)
+            print("attn: ", attn.shape)
+            print("mask: ", mask.shape)
             nW = mask.shape[0]
             attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
             attn = attn.view(-1, self.num_heads, N, N)
@@ -295,12 +223,9 @@ class LORA_WindowAttention(nn.Module):
 
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
-        # # v_lora = (v.transpose(-2, -1) @ self.lora_v).transpose(-2, -1)
-        # flattened_v_lora = v.transpose(-2, -1).reshape(B_, self.num_heads, -1)
-        # v_lora = self.lora_v(flattened_v_lora).reshape(B_, self.num_heads, C // self.num_heads, self.lora_rank).transpose(-2, -1)
-
-        # x = (attn @ v_lora).transpose(1, 2).reshape(B_, N, C)
+        # x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
+        v_lora = (v.transpose(-2, -1) @ self.lora_v).transpose(-2, -1)
+        x = (attn @ v_lora).transpose(1, 2).reshape(B_, N, C)
         
         x = self.proj(x)
         x = self.proj_drop(x)
@@ -310,34 +235,31 @@ class LORA_WindowAttention(nn.Module):
     def extra_repr(self) -> str:
         return f'dim={self.dim}, window_size={self.window_size}, num_heads={self.num_heads}'
 
-    def flops_lora(self, N):
-        # calculate flops for 1 window with token length of N
-        flops = 0
-        # qkv = self.qkv(x)
-        # flops += N * self.dim * 3 * self.dim
-        flops += 2 * N * self.dim * self.lora_rank
-
-
-        # attn = (q @ k.transpose(-2, -1))
-        flops += self.num_heads * N * (self.dim // self.num_heads) * N
-        #  x = (attn @ v)
-        flops += self.num_heads * N * N * (self.dim // self.num_heads)
-        # x = self.proj(x)
-        flops += N * self.dim * self.dim
-        return flops
-
     def flops(self, N):
         # calculate flops for 1 window with token length of N
         flops = 0
         # qkv = self.qkv(x)
         flops += N * self.dim * 3 * self.dim
+        
         # attn = (q @ k.transpose(-2, -1))
-        flops += self.num_heads * N * (self.dim // self.num_heads) * N
+        # flops += self.num_heads * N * (self.dim // self.num_heads) * N
         #  x = (attn @ v)
-        flops += self.num_heads * N * N * (self.dim // self.num_heads)
+        # flops += self.num_heads * N * N * (self.dim // self.num_heads)
+
+        # TODO: Figure out FLOPS compute
+        # # transform : k @ lora_k
+        # flops += k.shape[0] * k.shape[1] * 2 * k.shape[2] * k.shape[3] * k_lora.shape[3]
+        # # attn: q @ k_lora
+        # flops += q.shape[0] * q.shape[1] * 2 * q.shape[2] * q.shape[3] * k_lora.shape[3]
+        # # transform : v @ v_lora
+        # flops += v.shape[0] * v.shape[1] * 2 * v.shape[2] * v.shape[3] * v_lora.shape[3]
+        # # op : attn @ v_lora
+        # flops += attn.shape[0] * attn.shape[1] * 2 * attn.shape[2] * attn.shape[3] * v_lora.shape[3]
+
         # x = self.proj(x)
         flops += N * self.dim * self.dim
         return flops
+
 
 class WindowAttention(nn.Module):
     r""" Window based multi-head self attention (W-MSA) module with relative position bias.
@@ -465,7 +387,7 @@ class SwinTransformerBlock(nn.Module):
         fused_window_process (bool, optional): If True, use one kernel to fused window shift & window partition for acceleration, similar for the reversed part. Default: False
     """
 
-    def __init__(self, dim, input_resolution, num_heads, use_lora, lora_rank, window_size=7, shift_size=0,
+    def __init__(self, dim, input_resolution, num_heads, lora_rank, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm,
                  fused_window_process=False):
@@ -483,15 +405,13 @@ class SwinTransformerBlock(nn.Module):
         assert 0 <= self.shift_size < self.window_size, "shift_size must in 0-window_size"
 
         self.norm1 = norm_layer(dim)
-
-        if use_lora:
-            self.attn = LORA_WindowAttention(
-                dim, lora_rank=lora_rank, window_size=to_2tuple(self.window_size), num_heads=num_heads,
-                qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
-        else:
-            self.attn = WindowAttention(
-            dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
-            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
+        # self.attn = WindowAttention(
+        #     dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
+        #     qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
+        
+        # self.attn = LORA_WindowAttention(
+        #     dim, lora_rank=lora_rank, window_size=to_2tuple(self.window_size), num_heads=num_heads,
+        #     qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
         
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
@@ -514,18 +434,18 @@ class SwinTransformerBlock(nn.Module):
                 for w in w_slices:
                     img_mask[:, h, w, :] = cnt
                     cnt += 1
-            # self.attn = WindowAttention(
-            # dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
-            # qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
+            self.attn = WindowAttention(
+            dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
+            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
 
             mask_windows = window_partition(img_mask, self.window_size)  # nW, window_size, window_size, 1
             mask_windows = mask_windows.view(-1, self.window_size * self.window_size)
             attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
             attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
         else:
-            # self.attn = LORA_WindowAttention(
-            # dim, lora_rank, window_size=to_2tuple(self.window_size), num_heads=num_heads,
-            # qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
+            self.attn = LORA_WindowAttention(
+            dim, lora_rank, window_size=to_2tuple(self.window_size), num_heads=num_heads,
+            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
             attn_mask = None
 
         self.register_buffer("attn_mask", attn_mask)
@@ -597,19 +517,6 @@ class SwinTransformerBlock(nn.Module):
         flops += self.dim * H * W
         return flops
 
-    def flops_lora(self):
-        flops = 0
-        H, W = self.input_resolution
-        # norm1
-        flops += self.dim * H * W
-        # W-MSA/SW-MSA
-        nW = H * W / self.window_size / self.window_size
-        flops += nW * self.attn.flops_lora(self.window_size * self.window_size)
-        # mlp
-        flops += 2 * H * W * self.dim * self.dim * self.mlp_ratio
-        # norm2
-        flops += self.dim * H * W
-        return flops
 
 class PatchMerging(nn.Module):
     r""" Patch Merging Layer.
@@ -695,8 +602,7 @@ class BasicLayer(nn.Module):
         # build blocks
         self.blocks = nn.ModuleList([
             SwinTransformerBlock(dim=dim, input_resolution=input_resolution,
-                                 num_heads=num_heads, use_lora = (layer_id >= 0),
-                                 lora_rank=LORA_RANK_DICT['layers.' + str(layer_id) + ".blocks." + str(i) + ".attn"][LORA_SELECTOR],
+                                 num_heads=num_heads, lora_rank=LORA_RANK_DICT['layers.' + str(layer_id) + ".blocks." + str(i) + ".attn"][LORA_SELECTOR],
                                  window_size=window_size,
                                  shift_size=0 if (i % 2 == 0) else window_size // 2,
                                  mlp_ratio=mlp_ratio,
@@ -730,14 +636,6 @@ class BasicLayer(nn.Module):
         flops = 0
         for blk in self.blocks:
             flops += blk.flops()
-        if self.downsample is not None:
-            flops += self.downsample.flops()
-        return flops
-
-    def flops_lora(self):
-        flops = 0
-        for blk in self.blocks:
-            flops += blk.flops_lora()
         if self.downsample is not None:
             flops += self.downsample.flops()
         return flops
@@ -833,7 +731,6 @@ class SwinTransformer(nn.Module):
         self.patch_norm = patch_norm
         self.num_features = int(embed_dim * 2 ** (self.num_layers - 1))
         self.mlp_ratio = mlp_ratio
-        self.depths = depths
 
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
@@ -886,22 +783,6 @@ class SwinTransformer(nn.Module):
         elif isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
-    
-    def get_block(self, layer_id, block_id):
-        # print(list(list(model.children())[2][layer_id].children())[0][block_id])
-        return list(list(self.children())[2][layer_id].children())[0][block_id]
-
-    def get_attn(self, layer_id, block_id):
-        block = self.get_block(layer_id, block_id)
-        return list(block.children())[1]
-
-    def init_qkv_low_rank_weights(self):
-        for i_layer in range(self.num_layers):
-            for i_block in range(self.depths[i_layer]):
-                if i_layer >= 0:
-                    self.get_attn(i_layer, i_block).init_low_rank_approx_weights()
-
-
 
     @torch.jit.ignore
     def no_weight_decay(self):
@@ -935,15 +816,6 @@ class SwinTransformer(nn.Module):
         flops += self.patch_embed.flops()
         for i, layer in enumerate(self.layers):
             flops += layer.flops()
-        flops += self.num_features * self.patches_resolution[0] * self.patches_resolution[1] // (2 ** self.num_layers)
-        flops += self.num_features * self.num_classes
-        return flops
-
-    def flops_lora(self):
-        flops = 0
-        flops += self.patch_embed.flops()
-        for i, layer in enumerate(self.layers):
-            flops += layer.flops_lora()
         flops += self.num_features * self.patches_resolution[0] * self.patches_resolution[1] // (2 ** self.num_layers)
         flops += self.num_features * self.num_classes
         return flops

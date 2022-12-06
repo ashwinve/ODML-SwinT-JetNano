@@ -91,36 +91,44 @@ def main(config):
     logger.info(f"Creating model:{config.MODEL.TYPE}/{config.MODEL.NAME}")
     model = build_model(config)
     logger.info(str(model))
-    
+
     # Freeze specific layers for downstream task training
-    if(config.MODEL.SWIN.FREEZE_LAYERS and len(config.MODEL.SWIN.FREEZE_LAYER_INDEX) > 0):
-        if not config.MODEL.SWIN.FREEZE_AUTHOR_METHOD:
-            logger.info(f"Freezing Layers: {config.MODEL.SWIN.FREEZE_LAYER_INDEX}")
-            model_named_params = list(model.named_parameters())
-            num_params = len(model_named_params)
-            for param_iter in range(num_params):
-                param_name, param = model_named_params[param_iter]
+    model_named_params = list(model.named_parameters())
+    num_params = len(model_named_params)
+    for param_iter in range(num_params):
+        param_name, param = model_named_params[param_iter]
+        if "lora" not in param_name:
+            param.requires_grad = False
+    
+    # # Freeze specific layers for downstream task training
+    # if(config.MODEL.SWIN.FREEZE_LAYERS and len(config.MODEL.SWIN.FREEZE_LAYER_INDEX) > 0):
+    #     if not config.MODEL.SWIN.FREEZE_AUTHOR_METHOD:
+    #         logger.info(f"Freezing Layers: {config.MODEL.SWIN.FREEZE_LAYER_INDEX}")
+    #         model_named_params = list(model.named_parameters())
+    #         num_params = len(model_named_params)
+    #         for param_iter in range(num_params):
+    #             param_name, param = model_named_params[param_iter]
                 
-                if(param_iter < 4):
-                    # First 4 are patch_embed proj and norm -> assume freeze
-                    param.requires_grad = False
-                elif('layers' in param_name):
-                    if int(param_name.split(".")[1]) in config.MODEL.SWIN.FREEZE_LAYER_INDEX:
-                        # freeze param
-                        param.requires_grad = False
-                else:
-                    pass
-        else:
-            logger.info(f"Freezing Layers: {config.MODEL.SWIN.FREEZE_LAYER_INDEX}")
-            model_named_children = list(model.named_children())
-            num_children = len(model_named_children)
-            for child_iter in range(num_children):
-                named_param_list = list(model_named_children[child_iter][1].named_parameters())
-                num_params = len(named_param_list)
+    #             if(param_iter < 4):
+    #                 # First 4 are patch_embed proj and norm -> assume freeze
+    #                 param.requires_grad = False
+    #             elif('layers' in param_name):
+    #                 if int(param_name.split(".")[1]) in config.MODEL.SWIN.FREEZE_LAYER_INDEX:
+    #                     # freeze param
+    #                     param.requires_grad = False
+    #             else:
+    #                 pass
+    #     else:
+    #         logger.info(f"Freezing Layers: {config.MODEL.SWIN.FREEZE_LAYER_INDEX}")
+    #         model_named_children = list(model.named_children())
+    #         num_children = len(model_named_children)
+    #         for child_iter in range(num_children):
+    #             named_param_list = list(model_named_children[child_iter][1].named_parameters())
+    #             num_params = len(named_param_list)
                 
-                if child_iter in config.MODEL.SWIN.FREEZE_LAYER_INDEX:
-                    for param_iter in range(num_params):
-                        named_param_list[param_iter][1].requires_grad = False
+    #             if child_iter in config.MODEL.SWIN.FREEZE_LAYER_INDEX:
+    #                 for param_iter in range(num_params):
+    #                     named_param_list[param_iter][1].requires_grad = False
     
 
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -214,7 +222,7 @@ def main(config):
     logger.info('Training time {}'.format(total_time_str))
 
 
-def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mixup_fn, lr_scheduler, loss_scaler):
+def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mixup_fn, lr_scheduler, loss_scaler, logger):
     model.train()
     optimizer.zero_grad()
 
@@ -288,7 +296,7 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer, epoch, mix
 
 
 @torch.no_grad()
-def validate(config, data_loader, model):
+def validate(config, data_loader, model, logger):
     criterion = torch.nn.CrossEntropyLoss()
     model.eval()
 
