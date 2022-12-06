@@ -14,7 +14,7 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 
 learning_rate = 1e-03
 
-LORA_SELECTOR = 1
+LORA_SELECTOR = 5
 # LORA_RANK_DICT = {
 #     'layers.0.blocks.0.attn': [9,   12, 13, 49],
 #     'layers.0.blocks.1.attn': [28,  35, 38, 49],
@@ -695,7 +695,7 @@ class BasicLayer(nn.Module):
         # build blocks
         self.blocks = nn.ModuleList([
             SwinTransformerBlock(dim=dim, input_resolution=input_resolution,
-                                 num_heads=num_heads, use_lora = (layer_id >= 0),
+                                 num_heads=num_heads, use_lora = (layer_id >= 4),
                                  lora_rank=LORA_RANK_DICT['layers.' + str(layer_id) + ".blocks." + str(i) + ".attn"][LORA_SELECTOR],
                                  window_size=window_size,
                                  shift_size=0 if (i % 2 == 0) else window_size // 2,
@@ -898,7 +898,7 @@ class SwinTransformer(nn.Module):
     def init_qkv_low_rank_weights(self):
         for i_layer in range(self.num_layers):
             for i_block in range(self.depths[i_layer]):
-                if i_layer >= 0:
+                if i_layer >= 4:
                     self.get_attn(i_layer, i_block).init_low_rank_approx_weights()
 
 
