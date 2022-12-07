@@ -164,19 +164,25 @@ class LORA_WindowAttention(nn.Module):
         """
         dim * dim
         """
+        # Defining fused bias parameters
+        self.qkv_wUSprime = torch.nn.Parameter(torch.FloatTensor(dim, lora_rank*3), requires_grad=False)
+        self.qkv_wVprime = torch.nn.Parameter(torch.FloatTensor(3, lora_rank, dim), requires_grad=False)
+        self.qkv_b = torch.nn.Parameter(torch.FloatTensor(dim*3), requires_grad=False)
+        # self.qkv_b = torch.nn.Parameter(torch.FloatTensor(dim*3), requires_grad=False)
+
         # Defining separate weights parameters
-        self.q_wUSprime = torch.nn.Parameter(torch.FloatTensor(dim, lora_rank), requires_grad=False)
-        self.q_wVprime = torch.nn.Parameter(torch.FloatTensor(lora_rank, dim), requires_grad=False)
-        self.q_b = torch.nn.Parameter(torch.FloatTensor(dim), requires_grad=False)
+        # self.q_wUSprime = torch.nn.Parameter(torch.FloatTensor(dim, lora_rank), requires_grad=False)
+        # self.q_wVprime = torch.nn.Parameter(torch.FloatTensor(lora_rank, dim), requires_grad=False)
+        # self.q_b = torch.nn.Parameter(torch.FloatTensor(dim), requires_grad=False)
         
 
-        self.k_wUSprime = torch.nn.Parameter(torch.FloatTensor(dim, lora_rank), requires_grad=False)
-        self.k_wVprime = torch.nn.Parameter(torch.FloatTensor(lora_rank, dim), requires_grad=False)
-        self.k_b = torch.nn.Parameter(torch.FloatTensor(dim), requires_grad=False)
+        # self.k_wUSprime = torch.nn.Parameter(torch.FloatTensor(dim, lora_rank), requires_grad=False)
+        # self.k_wVprime = torch.nn.Parameter(torch.FloatTensor(lora_rank, dim), requires_grad=False)
+        # self.k_b = torch.nn.Parameter(torch.FloatTensor(dim), requires_grad=False)
 
-        self.v_wUSprime = torch.nn.Parameter(torch.FloatTensor(dim, lora_rank), requires_grad=False)
-        self.v_wVprime = torch.nn.Parameter(torch.FloatTensor(lora_rank, dim), requires_grad=False)
-        self.v_b = torch.nn.Parameter(torch.FloatTensor(dim), requires_grad=False)
+        # self.v_wUSprime = torch.nn.Parameter(torch.FloatTensor(dim, lora_rank), requires_grad=False)
+        # self.v_wVprime = torch.nn.Parameter(torch.FloatTensor(lora_rank, dim), requires_grad=False)
+        # self.v_b = torch.nn.Parameter(torch.FloatTensor(dim), requires_grad=False)
         
         
 
@@ -228,21 +234,39 @@ class LORA_WindowAttention(nn.Module):
         qkv_w = self.state_dict()['qkv.weight'].T.reshape(self.dim, 3, self.dim).permute(1,0,2) # reshape (dim, dim*3) => (dim, 3, dim) ; permute (dim, 3, dim) => (3, dim, dim)
         b = self.state_dict()['qkv.bias'].reshape(3, self.dim)
 
-        new_sd['q_b'] = b[0]
-        new_sd['k_b'] = b[1]
-        new_sd['v_b'] = b[2]
+        new_sd['qkv_b'] = self.state_dict()['qkv.bias']
+        # new_sd['q_b'] = b[0]
+        # new_sd['k_b'] = b[1]
+        # new_sd['v_b'] = b[2]
 
-        qw_uPrime, qw_sPrime, new_sd['q_wVprime'] = np.linalg.svd(qkv_w[0], full_matrices=False, compute_uv=True)
-        kw_uPrime, kw_sPrime, new_sd['k_wVprime'] = np.linalg.svd(qkv_w[1], full_matrices=False, compute_uv=True)
-        vw_uPrime, vw_sPrime, new_sd['v_wVprime'] = np.linalg.svd(qkv_w[2], full_matrices=False, compute_uv=True)
 
-        new_sd['q_wVprime'] = torch.tensor(new_sd['q_wVprime'][:self.lora_rank, :])
-        new_sd['k_wVprime'] = torch.tensor(new_sd['k_wVprime'][:self.lora_rank, :])
-        new_sd['v_wVprime'] = torch.tensor(new_sd['v_wVprime'][:self.lora_rank, :])
+        qw_uPrime, qw_sPrime, q_wVprime = np.linalg.svd(qkv_w[0], full_matrices=False, compute_uv=True)
+        kw_uPrime, kw_sPrime, k_wVprime = np.linalg.svd(qkv_w[1], full_matrices=False, compute_uv=True)
+        vw_uPrime, vw_sPrime, v_wVprime = np.linalg.svd(qkv_w[2], full_matrices=False, compute_uv=True)
 
-        new_sd['q_wUSprime'] = torch.tensor( qw_uPrime[:, :self.lora_rank] @ np.diag(qw_sPrime[:self.lora_rank]) )
-        new_sd['k_wUSprime'] = torch.tensor( kw_uPrime[:, :self.lora_rank] @ np.diag(kw_sPrime[:self.lora_rank]) )
-        new_sd['v_wUSprime'] = torch.tensor( vw_uPrime[:, :self.lora_rank] @ np.diag(vw_sPrime[:self.lora_rank]) )
+        q_wVprime = torch.vstack((q_wVprime, torch.ones(q_wVprime.size(dim=1)) ))
+        k_wVprime = torch.vstack((k_wVprime, torch.ones(k_wVprime.size(dim=1)) ))
+        v_wVprime = torch.vstack((v_wVprime, torch.ones(v_wVprime.size(dim=1)) ))
+
+        new_sd['qkv_wVprime'] = torch.tensor([q_wVprime, k_wVprime, v_wVprime])
+
+        q_wUSprime = torch.tensor( qw_uPrime[:, :self.lora_rank] @ np.diag(qw_sPrime[:self.lora_rank]) )
+        k_wUSprime = torch.tensor( kw_uPrime[:, :self.lora_rank] @ np.diag(kw_sPrime[:self.lora_rank]) )
+        v_wUSprime = torch.tensor( vw_uPrime[:, :self.lora_rank] @ np.diag(vw_sPrime[:self.lora_rank]) )
+
+        new_sd['qkv_wUSprime'] = torch.hstack((q_wUSprime, k_wUSprime, v_wUSprime))
+
+        # qw_uPrime, qw_sPrime, new_sd['q_wVprime'] = np.linalg.svd(qkv_w[0], full_matrices=False, compute_uv=True)
+        # kw_uPrime, kw_sPrime, new_sd['k_wVprime'] = np.linalg.svd(qkv_w[1], full_matrices=False, compute_uv=True)
+        # vw_uPrime, vw_sPrime, new_sd['v_wVprime'] = np.linalg.svd(qkv_w[2], full_matrices=False, compute_uv=True)
+
+        # new_sd['q_wVprime'] = torch.tensor(new_sd['q_wVprime'][:self.lora_rank, :])
+        # new_sd['k_wVprime'] = torch.tensor(new_sd['k_wVprime'][:self.lora_rank, :])
+        # new_sd['v_wVprime'] = torch.tensor(new_sd['v_wVprime'][:self.lora_rank, :])
+
+        # new_sd['q_wUSprime'] = torch.tensor( qw_uPrime[:, :self.lora_rank] @ np.diag(qw_sPrime[:self.lora_rank]) )
+        # new_sd['k_wUSprime'] = torch.tensor( kw_uPrime[:, :self.lora_rank] @ np.diag(kw_sPrime[:self.lora_rank]) )
+        # new_sd['v_wUSprime'] = torch.tensor( vw_uPrime[:, :self.lora_rank] @ np.diag(vw_sPrime[:self.lora_rank]) )
         
         self.load_state_dict(new_sd)
 
@@ -254,13 +278,24 @@ class LORA_WindowAttention(nn.Module):
         """
         B_, N, C = x.shape
 
-        # Using the low Rank Approximation of qkv weights : out = X @ W.T + b, where W.T is approximated
-        q = (((x @ self.q_wUSprime) @ (self.q_wVprime)) + self.q_b).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
-        k = (((x @ self.k_wUSprime) @ (self.k_wVprime)) + self.k_b).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
-        v = (((x @ self.v_wUSprime) @ (self.v_wVprime)) + self.v_b).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+        # q = (((x @ self.q_wUSprime) @ (self.q_wVprime)) + self.q_b)
+        x_US_qkv = (x @ self.qkv_wUSprime).reshape(-1, 3, self.lora_rank).permute(1, 0, 2) # 3, B*N_, low_rank
+        
+        #bmm
+        qkv = torch.bmm(x_US_qkv, self.qkv_wVprime) # 3, B*N_, C
+        qkv = qkv.permute(1,0,2).reshape(B_, N, 3*C)
+        qkv = qkv + self.qkv_b
+        # qkv = torch.baddbmm(self.qkv_b, x_US_qkv, self.qkv_wVprime) # 3, B*N_, C
+        # qkv = qkv.reshape(3, B_, N, self.num_heads, C // self.num_heads).permute(0, 1, 3, 2, 4) # 3, B, H, N, C/H
+        # q, k, v = qkv[0], qkv[1], qkv[2]
 
-        # qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        # q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+        # Using the low Rank Approximation of qkv weights : out = X @ W.T + b, where W.T is approximated
+        # q = (((x @ self.q_wUSprime) @ (self.q_wVprime)) + self.q_b).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+        # k = (((x @ self.k_wUSprime) @ (self.k_wVprime)) + self.k_b).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+        # v = (((x @ self.v_wUSprime) @ (self.v_wVprime)) + self.v_b).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+
+        qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
 
         q = q * self.scale
         attn = (q @ k.transpose(-2, -1))
