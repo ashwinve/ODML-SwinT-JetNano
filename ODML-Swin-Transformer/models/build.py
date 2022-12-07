@@ -12,7 +12,7 @@ from .swin_mlp import SwinMLP
 from .simmim import build_simmim
 
 
-def build_model(config, is_pretrain=False):
+def build_model(config, lora_selector, lora_layer, keep_qkv, is_pretrain=False):
     model_type = config.MODEL.TYPE
 
     # accelerate layernorm
@@ -49,7 +49,10 @@ def build_model(config, is_pretrain=False):
                                 norm_layer=layernorm,
                                 patch_norm=config.MODEL.SWIN.PATCH_NORM,
                                 use_checkpoint=config.TRAIN.USE_CHECKPOINT,
-                                fused_window_process=config.FUSED_WINDOW_PROCESS)
+                                fused_window_process=config.FUSED_WINDOW_PROCESS,
+                                lora_selector=lora_selector,
+                                lora_layer=lora_layer,
+                                keep_qkv=keep_qkv)
     elif model_type == 'swinv2':
         model = SwinTransformerV2(img_size=config.DATA.IMG_SIZE,
                                   patch_size=config.MODEL.SWINV2.PATCH_SIZE,

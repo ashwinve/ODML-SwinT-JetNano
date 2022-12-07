@@ -124,7 +124,7 @@ class LORA_WindowAttention(nn.Module):
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
 
-    def __init__(self, dim, lora_rank, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, lora_rank, keep_qkv, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
 
         super().__init__()
         self.dim = dim
@@ -149,8 +149,10 @@ class LORA_WindowAttention(nn.Module):
         relative_coords[:, :, 0] *= 2 * self.window_size[1] - 1
         relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
         self.register_buffer("relative_position_index", relative_position_index)
-
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        
+        if(keep_qkv):
+            self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
@@ -191,23 +193,23 @@ class LORA_WindowAttention(nn.Module):
         # torch.nn.init.xavier_normal_(self.lora_v)
         # torch.nn.init.xavier_normal_(self.lora_rpb)
 
-        self.optimizer = torch.optim.AdamW(self.parameters(), lr=learning_rate)
+        # self.optimizer = torch.optim.AdamW(self.parameters(), lr=learning_rate)
 
-        self.lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min')
-        # create a loss function
-        self.criterion = torch.nn.MSELoss()
+        # self.lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min')
+        # # create a loss function
+        # self.criterion = torch.nn.MSELoss()
 
         
     
-    def do_backward(self, target):
-        self.optimizer.zero_grad()
-        self.loss = self.criterion(self.output, target)
-        self.loss.backward()
-        self.optimizer.step()
+    # def do_backward(self, target):
+    #     self.optimizer.zero_grad()
+    #     self.loss = self.criterion(self.output, target)
+    #     self.loss.backward()
+    #     self.optimizer.step()
 
 
-    def do_lr_step(self):
-        self.lr_scheduler.step()
+    # def do_lr_step(self):
+    #     self.lr_scheduler.step()
 
     
     def load_pretrained_weights(self, params_names_list, super_model):
@@ -465,7 +467,7 @@ class SwinTransformerBlock(nn.Module):
         fused_window_process (bool, optional): If True, use one kernel to fused window shift & window partition for acceleration, similar for the reversed part. Default: False
     """
 
-    def __init__(self, dim, input_resolution, num_heads, use_lora, lora_rank, window_size=7, shift_size=0,
+    def __init__(self, dim, input_resolution, num_heads, use_lora, lora_rank, keep_qkv=True, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm,
                  fused_window_process=False):
@@ -486,7 +488,7 @@ class SwinTransformerBlock(nn.Module):
 
         if use_lora:
             self.attn = LORA_WindowAttention(
-                dim, lora_rank=lora_rank, window_size=to_2tuple(self.window_size), num_heads=num_heads,
+                dim, lora_rank=lora_rank, keep_qkv=keep_qkv, window_size=to_2tuple(self.window_size), num_heads=num_heads,
                 qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
         else:
             self.attn = WindowAttention(
@@ -681,7 +683,7 @@ class BasicLayer(nn.Module):
         fused_window_process (bool, optional): If True, use one kernel to fused window shift & window partition for acceleration, similar for the reversed part. Default: False
     """
 
-    def __init__(self, layer_id, dim, input_resolution, depth, num_heads, window_size,
+    def __init__(self, layer_id, lora_selector, lora_layer, keep_qkv, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False,
                  fused_window_process=False):
@@ -695,8 +697,9 @@ class BasicLayer(nn.Module):
         # build blocks
         self.blocks = nn.ModuleList([
             SwinTransformerBlock(dim=dim, input_resolution=input_resolution,
-                                 num_heads=num_heads, use_lora = (layer_id >= 4),
-                                 lora_rank=LORA_RANK_DICT['layers.' + str(layer_id) + ".blocks." + str(i) + ".attn"][LORA_SELECTOR],
+                                 num_heads=num_heads, use_lora = (layer_id >= lora_layer),
+                                 lora_rank=LORA_RANK_DICT['layers.' + str(layer_id) + ".blocks." + str(i) + ".attn"][lora_selector],
+                                 keep_qkv = keep_qkv,
                                  window_size=window_size,
                                  shift_size=0 if (i % 2 == 0) else window_size // 2,
                                  mlp_ratio=mlp_ratio,
@@ -823,7 +826,7 @@ class SwinTransformer(nn.Module):
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
-                 use_checkpoint=False, fused_window_process=False, **kwargs):
+                 use_checkpoint=False, fused_window_process=False, lora_selector=0, lora_layer=0, keep_kqv=True, **kwargs):
         super().__init__()
 
         self.num_classes = num_classes
@@ -856,7 +859,8 @@ class SwinTransformer(nn.Module):
         # build layers
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
-            layer = BasicLayer(layer_id=i_layer, dim=int(embed_dim * 2 ** i_layer),
+            layer = BasicLayer(layer_id=i_layer, lora_selector=lora_selector, lora_layer=lora_layer, keep_qkv=keep_kqv,
+                               dim=int(embed_dim * 2 ** i_layer),
                                input_resolution=(patches_resolution[0] // (2 ** i_layer),
                                                  patches_resolution[1] // (2 ** i_layer)),
                                depth=depths[i_layer],
