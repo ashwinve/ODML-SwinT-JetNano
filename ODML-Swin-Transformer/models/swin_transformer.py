@@ -124,7 +124,7 @@ class LORA_WindowAttention(nn.Module):
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
 
-    def __init__(self, dim, lora_rank, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, lora_rank, keep_qkv, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
 
         super().__init__()
         self.dim = dim
@@ -150,7 +150,8 @@ class LORA_WindowAttention(nn.Module):
         relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
         self.register_buffer("relative_position_index", relative_position_index)
 
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        if(keep_qkv):
+            self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
@@ -162,19 +163,24 @@ class LORA_WindowAttention(nn.Module):
         """
         dim * dim
         """
+        self.qkv_wUSprime = torch.nn.Parameter(torch.FloatTensor(dim, lora_rank*3), requires_grad=False)
+        self.qkv_wVprime = torch.nn.Parameter(torch.FloatTensor(3, lora_rank, dim), requires_grad=False)
+        self.qkv_b = torch.nn.Parameter(torch.FloatTensor(3, 1, dim), requires_grad=False)
+
+
         # Defining separate weights parameters
-        self.q_wUSprime = torch.nn.Parameter(torch.FloatTensor(dim, lora_rank), requires_grad=False)
-        self.q_wVprime = torch.nn.Parameter(torch.FloatTensor(lora_rank, dim), requires_grad=False)
-        self.q_b = torch.nn.Parameter(torch.FloatTensor(dim), requires_grad=False)
+        # self.q_wUSprime = torch.nn.Parameter(torch.FloatTensor(dim, lora_rank), requires_grad=False)
+        # self.q_wVprime = torch.nn.Parameter(torch.FloatTensor(lora_rank, dim), requires_grad=False)
+        # self.q_b = torch.nn.Parameter(torch.FloatTensor(dim), requires_grad=False)
         
 
-        self.k_wUSprime = torch.nn.Parameter(torch.FloatTensor(dim, lora_rank), requires_grad=False)
-        self.k_wVprime = torch.nn.Parameter(torch.FloatTensor(lora_rank, dim), requires_grad=False)
-        self.k_b = torch.nn.Parameter(torch.FloatTensor(dim), requires_grad=False)
+        # self.k_wUSprime = torch.nn.Parameter(torch.FloatTensor(dim, lora_rank), requires_grad=False)
+        # self.k_wVprime = torch.nn.Parameter(torch.FloatTensor(lora_rank, dim), requires_grad=False)
+        # self.k_b = torch.nn.Parameter(torch.FloatTensor(dim), requires_grad=False)
 
-        self.v_wUSprime = torch.nn.Parameter(torch.FloatTensor(dim, lora_rank), requires_grad=False)
-        self.v_wVprime = torch.nn.Parameter(torch.FloatTensor(lora_rank, dim), requires_grad=False)
-        self.v_b = torch.nn.Parameter(torch.FloatTensor(dim), requires_grad=False)
+        # self.v_wUSprime = torch.nn.Parameter(torch.FloatTensor(dim, lora_rank), requires_grad=False)
+        # self.v_wVprime = torch.nn.Parameter(torch.FloatTensor(lora_rank, dim), requires_grad=False)
+        # self.v_b = torch.nn.Parameter(torch.FloatTensor(dim), requires_grad=False)
         
         
 
@@ -224,23 +230,41 @@ class LORA_WindowAttention(nn.Module):
         new_sd = copy.deepcopy(self.state_dict())
 
         qkv_w = self.state_dict()['qkv.weight'].T.reshape(self.dim, 3, self.dim).permute(1,0,2) # reshape (dim, dim*3) => (dim, 3, dim) ; permute (dim, 3, dim) => (3, dim, dim)
-        b = self.state_dict()['qkv.bias'].reshape(3, self.dim)
+        # b = self.state_dict()['qkv.bias'].reshape(3, self.dim)
 
-        new_sd['q_b'] = b[0]
-        new_sd['k_b'] = b[1]
-        new_sd['v_b'] = b[2]
+        # new_sd['q_b'] = b[0]
+        # new_sd['k_b'] = b[1]
+        # new_sd['v_b'] = b[2]
+        new_sd['qkv_b'] = self.state_dict()['qkv.bias'].reshape(3, 1, self.dim)
 
-        qw_uPrime, qw_sPrime, new_sd['q_wVprime'] = np.linalg.svd(qkv_w[0], full_matrices=False, compute_uv=True)
-        kw_uPrime, kw_sPrime, new_sd['k_wVprime'] = np.linalg.svd(qkv_w[1], full_matrices=False, compute_uv=True)
-        vw_uPrime, vw_sPrime, new_sd['v_wVprime'] = np.linalg.svd(qkv_w[2], full_matrices=False, compute_uv=True)
+        qw_uPrime, qw_sPrime, q_wVprime = np.linalg.svd(qkv_w[0], full_matrices=False, compute_uv=True)
+        kw_uPrime, kw_sPrime, k_wVprime = np.linalg.svd(qkv_w[1], full_matrices=False, compute_uv=True)
+        vw_uPrime, vw_sPrime, v_wVprime = np.linalg.svd(qkv_w[2], full_matrices=False, compute_uv=True)
 
-        new_sd['q_wVprime'] = torch.tensor(new_sd['q_wVprime'][:self.lora_rank, :])
-        new_sd['k_wVprime'] = torch.tensor(new_sd['k_wVprime'][:self.lora_rank, :])
-        new_sd['v_wVprime'] = torch.tensor(new_sd['v_wVprime'][:self.lora_rank, :])
+        q_wVprime = q_wVprime[:self.lora_rank, :]
+        k_wVprime = k_wVprime[:self.lora_rank, :]
+        v_wVprime = v_wVprime[:self.lora_rank, :]
 
-        new_sd['q_wUSprime'] = torch.tensor( qw_uPrime[:, :self.lora_rank] @ np.diag(qw_sPrime[:self.lora_rank]) )
-        new_sd['k_wUSprime'] = torch.tensor( kw_uPrime[:, :self.lora_rank] @ np.diag(kw_sPrime[:self.lora_rank]) )
-        new_sd['v_wUSprime'] = torch.tensor( vw_uPrime[:, :self.lora_rank] @ np.diag(vw_sPrime[:self.lora_rank]) )
+        new_sd['qkv_wVprime'] = torch.tensor([q_wVprime, k_wVprime, v_wVprime])
+
+        q_wUSprime = torch.tensor( qw_uPrime[:, :self.lora_rank] @ np.diag(qw_sPrime[:self.lora_rank]) )
+        k_wUSprime = torch.tensor( kw_uPrime[:, :self.lora_rank] @ np.diag(kw_sPrime[:self.lora_rank]) )
+        v_wUSprime = torch.tensor( vw_uPrime[:, :self.lora_rank] @ np.diag(vw_sPrime[:self.lora_rank]) )
+
+        new_sd['qkv_wUSprime'] = torch.hstack((q_wUSprime, k_wUSprime, v_wUSprime))
+
+
+        # qw_uPrime, qw_sPrime, new_sd['q_wVprime'] = np.linalg.svd(qkv_w[0], full_matrices=False, compute_uv=True)
+        # kw_uPrime, kw_sPrime, new_sd['k_wVprime'] = np.linalg.svd(qkv_w[1], full_matrices=False, compute_uv=True)
+        # vw_uPrime, vw_sPrime, new_sd['v_wVprime'] = np.linalg.svd(qkv_w[2], full_matrices=False, compute_uv=True)
+
+        # new_sd['q_wVprime'] = torch.tensor(new_sd['q_wVprime'][:self.lora_rank, :])
+        # new_sd['k_wVprime'] = torch.tensor(new_sd['k_wVprime'][:self.lora_rank, :])
+        # new_sd['v_wVprime'] = torch.tensor(new_sd['v_wVprime'][:self.lora_rank, :])
+
+        # new_sd['q_wUSprime'] = torch.tensor( qw_uPrime[:, :self.lora_rank] @ np.diag(qw_sPrime[:self.lora_rank]) )
+        # new_sd['k_wUSprime'] = torch.tensor( kw_uPrime[:, :self.lora_rank] @ np.diag(kw_sPrime[:self.lora_rank]) )
+        # new_sd['v_wUSprime'] = torch.tensor( vw_uPrime[:, :self.lora_rank] @ np.diag(vw_sPrime[:self.lora_rank]) )
         
         self.load_state_dict(new_sd)
 
@@ -252,10 +276,28 @@ class LORA_WindowAttention(nn.Module):
         """
         B_, N, C = x.shape
 
-        # Using the low Rank Approximation of qkv weights : out = X @ W.T + b, where W.T is approximated
-        q = (((x @ self.q_wUSprime) @ (self.q_wVprime)) + self.q_b).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
-        k = (((x @ self.k_wUSprime) @ (self.k_wVprime)) + self.k_b).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
-        v = (((x @ self.v_wUSprime) @ (self.v_wVprime)) + self.v_b).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+        # print(" Doing attn fwd44")
+        x_US_qkv = (x @ self.qkv_wUSprime).reshape(-1, 3, self.lora_rank).permute(1, 0, 2) # 3, B*N_, low_rank
+        qkv = torch.baddbmm(self.qkv_b, x_US_qkv, self.qkv_wVprime).reshape(3, B_, N, self.num_heads, C // self.num_heads).permute(0, 1, 3, 2, 4) # 3, B, H, N, C/H
+        q, k, v = qkv[0], qkv[1], qkv[2]
+        # print("Using this")
+
+        # qkv = torch.bmm(x_US_qkv, self.qkv_wVprime) # 3, B*N_, C
+        # qkv[0] += self.q_b
+        # qkv[1] += self.k_b
+        # qkv[2] += self.v_b
+        # qkv = qkv.reshape(3, B_, N, self.num_heads, C // self.num_heads).permute(0, 1, 3, 2, 4) # 3, B, H, N, C/H
+        # q, k, v = qkv[0], qkv[1], qkv[2]
+
+        # q = ((x_US_qkv[0] @ (self.q_wVprime)) + self.q_b).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+        # k = ((x_US_qkv[1] @ (self.k_wVprime)) + self.k_b).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+        # v = ((x_US_qkv[2] @ (self.v_wVprime)) + self.v_b).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+
+
+        # # Using the low Rank Approximation of qkv weights : out = X @ W.T + b, where W.T is approximated
+        # q = (((x @ self.q_wUSprime) @ (self.q_wVprime)) + self.q_b).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+        # k = (((x @ self.k_wUSprime) @ (self.k_wVprime)) + self.k_b).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+        # v = (((x @ self.v_wUSprime) @ (self.v_wVprime)) + self.v_b).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
 
         # qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         # q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
@@ -465,7 +507,7 @@ class SwinTransformerBlock(nn.Module):
         fused_window_process (bool, optional): If True, use one kernel to fused window shift & window partition for acceleration, similar for the reversed part. Default: False
     """
 
-    def __init__(self, dim, input_resolution, num_heads, use_lora, lora_rank, window_size=7, shift_size=0,
+    def __init__(self, dim, input_resolution, num_heads, use_lora, lora_rank, keep_qkv, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm,
                  fused_window_process=False):
@@ -486,7 +528,7 @@ class SwinTransformerBlock(nn.Module):
 
         if use_lora:
             self.attn = LORA_WindowAttention(
-                dim, lora_rank=lora_rank, window_size=to_2tuple(self.window_size), num_heads=num_heads,
+                dim, lora_rank=lora_rank, keep_qkv=keep_qkv, window_size=to_2tuple(self.window_size), num_heads=num_heads,
                 qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
         else:
             self.attn = WindowAttention(
@@ -684,7 +726,9 @@ class BasicLayer(nn.Module):
     def __init__(self, layer_id, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False,
-                 fused_window_process=False):
+                 fused_window_process=False, lora_selector=0,
+                                lora_layer=0,
+                                keep_qkv=True):
 
         super().__init__()
         self.dim = dim
@@ -695,8 +739,9 @@ class BasicLayer(nn.Module):
         # build blocks
         self.blocks = nn.ModuleList([
             SwinTransformerBlock(dim=dim, input_resolution=input_resolution,
-                                 num_heads=num_heads, use_lora = (layer_id >= 4),
-                                 lora_rank=LORA_RANK_DICT['layers.' + str(layer_id) + ".blocks." + str(i) + ".attn"][LORA_SELECTOR],
+                                 num_heads=num_heads, use_lora = (layer_id >= lora_layer),
+                                 lora_rank=LORA_RANK_DICT['layers.' + str(layer_id) + ".blocks." + str(i) + ".attn"][lora_selector],
+                                 keep_qkv=keep_qkv,
                                  window_size=window_size,
                                  shift_size=0 if (i % 2 == 0) else window_size // 2,
                                  mlp_ratio=mlp_ratio,
@@ -823,7 +868,9 @@ class SwinTransformer(nn.Module):
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
-                 use_checkpoint=False, fused_window_process=False, **kwargs):
+                 use_checkpoint=False, fused_window_process=False, lora_selector=0,
+                                lora_layer=0,
+                                keep_qkv=True, **kwargs):
         super().__init__()
 
         self.num_classes = num_classes
@@ -869,7 +916,10 @@ class SwinTransformer(nn.Module):
                                norm_layer=norm_layer,
                                downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
                                use_checkpoint=use_checkpoint,
-                               fused_window_process=fused_window_process)
+                               fused_window_process=fused_window_process,
+                               lora_selector=lora_selector,
+                                lora_layer=lora_layer,
+                                keep_qkv=keep_qkv)
             self.layers.append(layer)
 
         self.norm = norm_layer(self.num_features)
@@ -898,7 +948,7 @@ class SwinTransformer(nn.Module):
     def init_qkv_low_rank_weights(self):
         for i_layer in range(self.num_layers):
             for i_block in range(self.depths[i_layer]):
-                if i_layer >= 4:
+                if i_layer >= 0:
                     self.get_attn(i_layer, i_block).init_low_rank_approx_weights()
 
 
