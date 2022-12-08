@@ -12,7 +12,7 @@ from config import get_config
 from data import build_loader
 from models import build_model
 
-from main import train_one_epoch, validate, throughput
+from main import train_one_epoch, validate, throughput, batch_latency
 
 from config import get_only_config
 import json
@@ -34,17 +34,17 @@ if __name__ == '__main__':
 
 
 
-    config_path = 'configs/swin/swin_tiny_patch4_window7_224_resisc45.yaml'
+    config_path = '/mnt/usb_sdcard/ODML-SwinT-JetNano/ODML-Swin-Transformer/configs/swin/swin_tiny_patch4_window7_224_resisc45.yaml'
     config = get_only_config(config_path)
 
 
     config.defrost()
-    config.OUTPUT = "/afs/ece.cmu.edu/usr/bmarimut/Private/output"
+    config.OUTPUT = "/mnt/usb_sdcard/ODML-SwinT-JetNano/ODML-Swin-Transformer/output"
     # config.MODEL.PRETRAINED = "/afs/ece.cmu.edu/usr/ashwinve/Public/ckpt_epoch_29_6.pth"
-    config.MODEL.PRETRAINED = "/afs/ece.cmu.edu/usr/ashwinve/Public/golden_resisc45.pth"
-    config.MODEL.RESUME = "/afs/ece.cmu.edu/usr/ashwinve/Public/golden_resisc45.pth"
+    config.MODEL.PRETRAINED = "/mnt/usb_sdcard/ODML-SwinT-JetNano/ODML-Swin-Transformer/golden_resisc45.pth"
+    config.MODEL.RESUME = "/mnt/usb_sdcard/ODML-SwinT-JetNano/ODML-Swin-Transformer/golden_resisc45.pth"
     config.DATA.CACHE_MODE = 'no'
-    config.DATA.DATA_PATH = './data/RESISC45/'
+    config.DATA.DATA_PATH = '/mnt/usb_sdcard/ODML-SwinT-JetNano/ODML-Swin-Transformer/data/RESISC45/'
     config.DATA.ZIP_MODE = True
     config.PRINT_FREQ = 120
     config.DATA.BATCH_SIZE = 8
@@ -52,9 +52,13 @@ if __name__ == '__main__':
     os.makedirs(config.OUTPUT, exist_ok=True)
     logger = create_logger(output_dir=config.OUTPUT, name=f"{config.MODEL.NAME}")
     
+    
+    #print(config)
+
     my_model = None
 
     if config_name == 'baseline':
+        print("\n\n\n Running baseline resisc45 ... ")
         checkpoint = torch.load(config.MODEL.PRETRAINED, map_location='cpu')
         config_name = checkpoint['model']
         lora_selector = 0
@@ -64,15 +68,16 @@ if __name__ == '__main__':
         my_model.load_state_dict(config_name, strict=False)
 
     else:
-        config_name = "config"+config_name+"_chkpt.pth"
         lora_selector = int(config_name)
+        config_name = "config"+config_name+"_chkpt.pth"
+        print("\n\n\n Running config : " + config_name + " resisc45 ... ")
         lora_layer = 0
         keep_qkv = False
         my_model = build_model(config, lora_selector, lora_layer, keep_qkv)
         my_model.load_state_dict(torch.load(config_name, map_location='cpu'), strict=False)
 
 
-
+    my_model.cuda()
     dataset_train, dataset_val, data_loader_train, data_loader_val, mixup_fn = build_loader(config)
 
     # acc1, acc5, loss = teacher_validate(config, data_loader_val, super_model)
