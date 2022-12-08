@@ -284,7 +284,7 @@ class LORA_WindowAttention(nn.Module):
         #bmm
         qkv = torch.bmm(x_US_qkv, self.qkv_wVprime) # 3, B*N_, C
         qkv = qkv.permute(1,0,2).reshape(B_, N, 3*C)
-        qkv = qkv + self.qkv_b
+        qkv = qkv + self.qkv_b 
         # qkv = torch.baddbmm(self.qkv_b, x_US_qkv, self.qkv_wVprime) # 3, B*N_, C
         # qkv = qkv.reshape(3, B_, N, self.num_heads, C // self.num_heads).permute(0, 1, 3, 2, 4) # 3, B, H, N, C/H
         # q, k, v = qkv[0], qkv[1], qkv[2]
